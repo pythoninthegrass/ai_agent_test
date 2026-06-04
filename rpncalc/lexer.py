@@ -13,10 +13,16 @@ class Lexer:
 
     def tokenize(self) -> list:
         """Return a list of tokens from the input text."""
-        # Pattern to match positive integers (sequences of digits)
-        pattern = r'\d+'
+        # Combined pattern to match floats or integers
+        # Floats: optional minus, digits, dot, digits (e.g., -2.0, 3.14)
+        # Integers: optional minus, one or more digits (e.g., -5, 42)
+        pattern = r'-?\d+\.\d+|-?\d+'
         
         for match in re.finditer(pattern, self.text):
-            self.tokens.append(("INT", int(match.group())))
+            value_str = match.group()
+            if '.' in value_str:
+                self.tokens.append(("FLOAT", float(value_str)))
+            else:
+                self.tokens.append(("INT", int(value_str)))
         
         return self.tokens
