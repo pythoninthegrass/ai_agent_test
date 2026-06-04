@@ -38,4 +38,6 @@ class Eval:
         elif op == "*":
             self.stack.append(a * b)
         elif op == "/":
+            if b == 0:
+                raise RpnError("division by zero")
             self.stack.append(a / b)
