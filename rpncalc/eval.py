@@ -21,6 +21,10 @@ class Eval:
             elif token_type == "OP":
                 self._apply_op(value)
         
+        # Check for leftover operands
+        if len(self.stack) > 1:
+            raise RpnError("leftover operands on stack")
+        
         return self.stack[-1] if self.stack else None
 
     def _apply_op(self, op: str):
