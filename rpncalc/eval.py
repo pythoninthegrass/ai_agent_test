@@ -274,3 +274,60 @@ class Eval:
             self.stack.append(1 if a >= b else 0)
         else:
             raise RpnError(f"unknown operator: {op}")
+
+
+def repl(input_stream=None, output_stream=None):
+    """Read-Eval-Print Loop for rpncalc.
+    
+    Reads lines from input_stream (default: stdin), evaluates them,
+    prints the top of stack, and exits when 'quit' is entered.
+    """
+    import sys
+    from rpncalc.lexer import Lexer
+
+    if input_stream is None:
+        input_stream = sys.stdin
+    if output_stream is None:
+        output_stream = sys.stdout
+
+    variables = {}
+    functions = {}
+
+    while True:
+        output_stream.flush()
+        try:
+            line = input_stream.readline()
+        except KeyboardInterrupt:
+            output_stream.write("\n")
+            output_stream.flush()
+            break
+
+        if not line:
+            break
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if line.lower() == "quit":
+            break
+
+        try:
+            lexer = Lexer(line)
+            tokens = lexer.tokenize()
+            evaluator = Eval(tokens, variables, functions)
+            result = evaluator.eval()
+
+            if evaluator.variables:
+                variables = evaluator.variables
+            if evaluator.functions:
+                functions = evaluator.functions
+
+            if result is not None:
+                output_stream.write(f"{result}\n")
+
+        except RpnError as e:
+            output_stream.write(f"Error: {e}\n")
+
+        output_stream.flush()
