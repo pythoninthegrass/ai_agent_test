@@ -73,5 +73,17 @@ class Eval:
             self.stack.append(a ** b)
         elif op == "//":
             self.stack.append(a // b)
+        elif op == "<":
+            self.stack.append(1 if a < b else 0)
+        elif op == ">":
+            self.stack.append(1 if a > b else 0)
+        elif op == "==":
+            self.stack.append(1 if a == b else 0)
+        elif op == "!=":
+            self.stack.append(1 if a != b else 0)
+        elif op == "<=":
+            self.stack.append(1 if a <= b else 0)
+        elif op == ">=":
+            self.stack.append(1 if a >= b else 0)
         else:
             raise RpnError(f"unknown operator: {op}")
