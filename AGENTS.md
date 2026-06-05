@@ -1,0 +1,74 @@
+# AGENTS.md
+
+This file provides guidance to AI agents when working with code in this repository.
+
+## What this repo is
+
+A **compaction-stress harness** that drives three different AI coding agents (`pi`, `opencode`, `hermes`) through a fixed 18-milestone TDD exercise (`TASK.md`) to measure whether each agent's context-compaction fires before koboldcpp's SmartCache context-shift kicks in. The agent under test builds `rpncalc/` — a small RPN calculator interpreter — inside `build/` using pytest-driven milestones.
+
+## Running the harness
+
+`run.py` is a self-contained `uv run --script`; no venv setup needed:
+
+```bash
+# Drive all three agents sequentially (waits for vLLM on :61515 first)
+./run-all-vllm.sh
+
+# Run a single agent
+./run-all-vllm.sh pi
+./run-all-vllm.sh opencode hermes   # two agents, in order
+
+# Drive one agent directly
+./run.py milestones                 # pi (default model)
+./run.py opencode-milestones
+./run.py hermes-milestones
+
+# Common flags
+./run.py milestones --max-steps 10 --max-stalls 3
+./run.py milestones --model koboldcpp/some-other-model
+
+# Just watch Docker container logs for CtxLimit signals
+./run.py observe
+```
+
+Output artifacts land in `build-pi-vllm/`, `build-opencode-vllm/`, `build-hermes-vllm/` after each run: `run.log` and `harness.status`.
+
+## Architecture
+
+### `run.py` — the harness
+
+The core loop (`cmd_milestones` / `cmd_milestones_opencode` / `cmd_milestones_hermes`) follows the same pattern for all three agents:
+
+1. `reset_build()` — wipes `build/`, seeds `TASK.md` + `pytest.ini`, creates an initial `milestone 00: harness` git commit.
+2. Outer `for step in range(max_steps)` loop — one agent invocation per step, each passed `MILESTONE_PROMPT` (do exactly one milestone then stop).
+3. After each step, `milestone_count(repo)` counts the highest `milestone N:` commit to detect progress. No progress → stall counter; too many stalls → `BAIL`.
+4. Compaction signal is detected by watching Docker container logs for `CtxLimit:<used>/<max>` lines (via `start_observers` / `stream` threads).
+
+**Why one invocation per milestone**: `pi` only runs its auto-compaction check at agent-run boundaries (`agent_end` / pre-prompt). One continuous `pi -p` run for all 18 milestones never hits that boundary, so context climbs to the 131072 ceiling. Splitting into per-milestone invocations with a shared `--session-id` creates the boundary while preserving session continuity.
+
+### Agent differences
+
+| Agent | Binary | Session continuity | Config |
+|---|---|---|---|
+| `pi` | `pi` (Claude Code CLI) | `--session-id <uuid>` flag | inline flags |
+| `opencode` | `~/.opencode/bin/opencode` | `--session <id>` (captured from first JSON `sessionID` event) | `opencode.json` |
+| `hermes` | `~/.local/bin/hermes` | `--resume <id>` (captured from `session_id: <id>` line in output) | CLI flags |
+
+### `build/` — the agent's working directory
+
+The agent builds here from scratch each run. It is a git repo (seeded by `reset_build()`). The harness never modifies `build/` directly after seeding — only the agent does. Milestone progress is measured by reading the git log of `build/`.
+
+### `run-all-vllm.sh` — sequential multi-agent runner
+
+Waits for vLLM health on `:61515`, then calls `run.py milestones`, `run.py opencode-milestones`, `run.py hermes-milestones` in sequence, archiving `build/` to `build-{agent}-vllm/` between runs.
+
+## Key constants (in `run.py`)
+
+- `SESSION_MODEL` — default pi model: `koboldcpp/qwen3-coder-next-builder`
+- `OPENCODE_MODEL` — default opencode model: `local-builder/qwen3-coder-next` (proxy on `:61519`)
+- `HERMES_MODEL` — default hermes model: `qwen3-coder-next`
+- vLLM endpoint: `:61515`; opencode/hermes proxy: `:61519`
+
+## The task being graded (`TASK.md`)
+
+18 milestones building `rpncalc/` (scaffold → lexer → evaluator → errors → variables → comparisons → conditionals → comments → stack-ops → functions → repl → file runner → line-number errors). The agent must follow strict TDD: test first, full `pytest -v` between each milestone, one commit per milestone with message `milestone N: <slug>`.
