@@ -18,25 +18,28 @@
 
 set -euo pipefail
 
-MISE=/home/lance/.local/bin/mise
-PI_TEST=/home/lance/git/ai_agent_test
+MISE="${MISE:-$HOME/.local/bin/mise}"
+PI_TEST="${PI_TEST:-$HOME/git/ai_agent_test}"
 MAX_STEPS="${MAX_STEPS:-20}"
 MAX_STALLS="${MAX_STALLS:-8}"
+VLLM_HOST="${VLLM_HOST:-localhost}"
+VLLM_PORT="${VLLM_PORT:-61515}"
+VLLM_HEALTH_RETRIES="${VLLM_HEALTH_RETRIES:-240}"
 
 cd "$PI_TEST"
 
 log() { echo "$(date '+%Y-%m-%dT%H:%M:%S') [run-all-vllm] $*"; }
 
 wait_for_vllm() {
-    log "waiting for vLLM /health on :61515 ..."
-    for i in $(seq 1 240); do
-        if curl -sf http://localhost:61515/health >/dev/null 2>&1; then
+    log "waiting for vLLM /health on ${VLLM_HOST}:${VLLM_PORT} ..."
+    for i in $(seq 1 "$VLLM_HEALTH_RETRIES"); do
+        if curl -sf "http://${VLLM_HOST}:${VLLM_PORT}/health" >/dev/null 2>&1; then
             log "vLLM is ready (attempt $i)"
             return 0
         fi
         sleep 5
     done
-    log "ERROR: vLLM did not become healthy after 600s"
+    log "ERROR: vLLM did not become healthy after $((VLLM_HEALTH_RETRIES * 5))s"
     exit 1
 }
 
