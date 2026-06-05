@@ -2,7 +2,6 @@
 
 import re
 
-
 class Lexer:
     """Tokenizes input strings into a list of tokens."""
 
@@ -11,8 +10,23 @@ class Lexer:
         self.pos = 0
         self.tokens = []
 
+    def _remove_comments(self, text: str) -> str:
+        """Remove # comments from text. Comments start with # and go to end of line."""
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Find # and remove everything after it (including the #)
+            if '#' in line:
+                line = line[:line.index('#')]
+            cleaned_lines.append(line)
+        return '\n'.join(cleaned_lines)
+
     def tokenize(self) -> list:
         """Return a list of tokens from the input text."""
+        # First remove comments
+        text = self._remove_comments(self.text)
+        
+        # Now tokenize the cleaned text
         # Combined pattern to match floats, integers, variables, or operators
         # Order matters: longer patterns first (** // % == != <= >=), then single char ops (+ - * / < >)
         # Floats: optional minus, digits, dot, digits (e.g., -2.0, 3.14)
@@ -22,7 +36,7 @@ class Lexer:
         # Operators: ** // % == != <= >= < > + - * / = (assignment)
         pattern = r'-?\d+\.\d+|-?\d+|[a-z_][a-z0-9_]*|\*\*|//|%|==|!=|<=|>=|<|>|[+\-*/=]'
 
-        for match in re.finditer(pattern, self.text):
+        for match in re.finditer(pattern, text):
             value_str = match.group()
             if value_str in ['if', 'else', 'end']:
                 self.tokens.append(("KEYWORD", value_str))
