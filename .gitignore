@@ -1,5 +1,7 @@
 *.log
 CLAUDE.md
+build/
+build-*/
 rpncalc/
 tests/
 
