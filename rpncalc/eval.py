@@ -49,12 +49,20 @@ class Eval:
                     raise RpnError("unexpected 'else' without 'if'")
                 elif value == "end":
                     raise RpnError("unexpected 'end' without 'if'")
+                elif value == "dup":
+                    self._apply_dup()
+                    i += 1
+                elif value == "swap":
+                    self._apply_swap()
+                    i += 1
+                elif value == "drop":
+                    self._apply_drop()
+                    i += 1
+                elif value == "over":
+                    self._apply_over()
+                    i += 1
             else:
                 i += 1
-
-        # Check for leftover operands
-        if len(self.stack) > 1:
-            raise RpnError("leftover operands on stack")
 
         return self.stack[-1] if self.stack else None
 
@@ -162,6 +170,33 @@ class Eval:
                 # False condition with no else: push the condition back
                 self.stack.append(condition)
             return end_idx + 1
+
+    def _apply_dup(self):
+        """Duplicate the top of stack."""
+        if len(self.stack) < 1:
+            raise RpnError("stack underflow for dup")
+        self.stack.append(self.stack[-1])
+
+    def _apply_swap(self):
+        """Swap the top two elements of the stack."""
+        if len(self.stack) < 2:
+            raise RpnError("stack underflow for swap")
+        a = self.stack.pop()
+        b = self.stack.pop()
+        self.stack.append(a)
+        self.stack.append(b)
+
+    def _apply_drop(self):
+        """Remove the top of the stack."""
+        if len(self.stack) < 1:
+            raise RpnError("stack underflow for drop")
+        self.stack.pop()
+
+    def _apply_over(self):
+        """Duplicate the second element on top of the stack."""
+        if len(self.stack) < 2:
+            raise RpnError("stack underflow for over")
+        self.stack.append(self.stack[-2])
 
     def _apply_op(self, op: str):
         """Apply an operator to the top of the stack."""

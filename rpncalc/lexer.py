@@ -32,13 +32,13 @@ class Lexer:
         # Floats: optional minus, digits, dot, digits (e.g., -2.0, 3.14)
         # Integers: optional minus, one or more digits (e.g., -5, 42)
         # Variables: lowercase letters (e.g., x, var, my_var)
-        # Keywords: if, else, end
+        # Keywords: if, else, end, dup, swap, drop, over
         # Operators: ** // % == != <= >= < > + - * / = (assignment)
         pattern = r'-?\d+\.\d+|-?\d+|[a-z_][a-z0-9_]*|\*\*|//|%|==|!=|<=|>=|<|>|[+\-*/=]'
 
         for match in re.finditer(pattern, text):
             value_str = match.group()
-            if value_str in ['if', 'else', 'end']:
+            if value_str in ['if', 'else', 'end', 'dup', 'swap', 'drop', 'over']:
                 self.tokens.append(("KEYWORD", value_str))
             elif value_str in ['+', '-', '*', '/', '%', '**', '//', '=', '<', '>', '==', '!=', '<=', '>=']:
                 self.tokens.append(("OP", value_str))
