@@ -19,7 +19,7 @@
 set -euo pipefail
 
 MISE=/home/lance/.local/bin/mise
-PI_TEST=/home/lance/git/pi_test
+PI_TEST=/home/lance/git/ai_agent_test
 MAX_STEPS="${MAX_STEPS:-20}"
 MAX_STALLS="${MAX_STALLS:-8}"
 
