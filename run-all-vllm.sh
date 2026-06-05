@@ -19,14 +19,14 @@
 set -euo pipefail
 
 MISE="${MISE:-$HOME/.local/bin/mise}"
-PI_TEST="${PI_TEST:-$HOME/git/ai_agent_test}"
+AGENT_TEST="${AGENT_TEST:-$HOME/git/ai_agent_test}"
 MAX_STEPS="${MAX_STEPS:-20}"
 MAX_STALLS="${MAX_STALLS:-8}"
 VLLM_HOST="${VLLM_HOST:-localhost}"
 VLLM_PORT="${VLLM_PORT:-61515}"
 VLLM_HEALTH_RETRIES="${VLLM_HEALTH_RETRIES:-240}"
 
-cd "$PI_TEST"
+cd "$AGENT_TEST"
 
 log() { echo "$(date '+%Y-%m-%dT%H:%M:%S') [run-all-vllm] $*"; }
 
