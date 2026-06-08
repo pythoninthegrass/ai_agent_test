@@ -100,8 +100,10 @@ MILESTONE_PROMPT = (
     "committed. Complete the NEXT not-yet-committed milestone using TDD (write the "
     "failing test, make it pass, refactor), then `git commit` it with the message "
     "`milestone N: <slug>` where N is the milestone number. Do EXACTLY ONE milestone "
-    "this turn. After committing it, STOP and end your turn — do NOT start the "
-    "following milestone. The harness re-invokes you in this same session to continue."
+    "this turn. After committing, run `git log --oneline` to confirm the commit "
+    "appears — do NOT declare a milestone complete unless you can see its commit in "
+    "the log. Then STOP and end your turn — do NOT start the following milestone. "
+    "The harness re-invokes you in this same session to continue."
 )
 
 CTX = re.compile(r"CtxLimit:(\d+)/(\d+)")
