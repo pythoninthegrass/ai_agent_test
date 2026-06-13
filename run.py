@@ -259,14 +259,25 @@ def _harness_exit(status: str, reason: str, done: int, total: int, step: int, lo
     return 0 if status == "DONE" else 1
 
 
+def _find_pi_session(build_dir: Path) -> str | None:
+    """Return the UUID of the most recently created pi session for the given CWD."""
+    cwd_key = str(build_dir).lstrip("/").replace("/", "-")
+    session_dir = Path.home() / ".pi" / "agent" / "sessions" / f"--{cwd_key}--"
+    files = sorted(session_dir.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)
+    if not files:
+        return None
+    stem = files[0].stem  # e.g. "2026-06-13T05-27-22-454Z_019ebf72-f455-747b-9b85-..."
+    return stem.split("_", 1)[1] if "_" in stem else stem
+
+
 def cmd_milestones(match, tail, warn_at, model, total, max_steps, max_stalls, step_timeout):
     reset_build()
     start_observers(match, tail, warn_at)
     repo = Repo(BUILD)
-    sid = f"pi-test-{uuid.uuid4().hex[:12]}"
+    sid = None  # captured from pi session file after step 1; passed as --session on subsequent steps
     logfile = BUILD / "run.log"
     print(f"== milestone loop in {BUILD} ==")
-    print(f"   model={model}  session-id={sid}  target={total} milestones")
+    print(f"   model={model}  target={total} milestones")
     cap = f"{step_timeout}s" if step_timeout else "disabled"
     print(f"   step-timeout={cap}  tee -> {logfile}\n")
 
@@ -279,8 +290,11 @@ def cmd_milestones(match, tail, warn_at, model, total, max_steps, max_stalls, st
             f.write(f"\n-- step {step}  milestones={done}/{total}  sid={sid} --\n")
             f.flush()
             timed_out = threading.Event()
-            run = sh.pi("-p", "--model", model, "--session-id", sid,
-                        MILESTONE_PROMPT, _cwd=str(BUILD), _iter=True,
+            cmd_args = ["-p", "--model", model]
+            if sid is not None:
+                cmd_args += ["--session", sid]
+            cmd_args.append(MILESTONE_PROMPT)
+            run = sh.pi(*cmd_args, _cwd=str(BUILD), _iter=True,
                         _err_to_out=True, _new_session=True, _bg_exc=False)
             timer = None
             if step_timeout:
@@ -313,6 +327,11 @@ def cmd_milestones(match, tail, warn_at, model, total, max_steps, max_stalls, st
                 print(f"{B}{R}{msg}{X}", flush=True)
                 f.write(msg + "\n")
                 f.flush()
+
+            if sid is None:
+                sid = _find_pi_session(BUILD)
+                if sid:
+                    print(f"{D}   pi session-id={sid}{X}", flush=True)
 
             now = milestone_count(repo)
             if now > done:
