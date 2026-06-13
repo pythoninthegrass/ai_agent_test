@@ -36,6 +36,11 @@ Usage:
                                     Default model: qwen3-coder-next (proxy 61519 via config.yaml).
                                     Requires the hermes server to already be running if using
                                     the API server mode; CLI mode starts hermes per-step.
+    run.py stress                   Synthetic agentic-load test via Locust against the :61519
+                                    proxy: concurrent agent sessions, growing multi-turn
+                                    context, tool-call/tool-result turns. Streams the same
+                                    CtxLimit/context-shift Docker signals as the milestone
+                                    commands. Artifacts in build-locust-vllm/.
     run.py                          Show this help.
 
 Flags (observe / watch / milestones):
@@ -53,6 +58,13 @@ Flags (milestones):
                       own; the watchdog kills its process group, counts the step as a stall,
                       and re-prompts in the same session (a fresh agent run, so pi's
                       pre-prompt compaction check fires). 0 disables the cap.
+
+Flags (stress):
+    --host URL      vLLM/proxy base URL (default: http://127.0.0.1:61519).
+    --api-key K     Bearer token for the endpoint (default: local).
+    --users N       Concurrent virtual agents (default: 8).
+    --rate N        Users to spawn per second during ramp-up (default: 2).
+    --duration S    Total run time, e.g. 5m, 30s (default: 5m).
 
 Why this mode exists: pi only checks auto-compaction when an agent run ENDS (at agent_end)
 or before a new prompt — never inside one continuous tool loop. A single `pi -p` that drives
@@ -95,6 +107,8 @@ OPENCODE_MODEL = "local-builder/qwen3-coder-next"
 OPENCODE_BIN = shutil.which("opencode") or "/home/lance/.opencode/bin/opencode"
 HERMES_MODEL = "qwen3-coder-next"
 HERMES_BIN = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
+STRESS_HOST = "http://127.0.0.1:61519"
+STRESS_MODEL = "qwen3-coder-next"
 MILESTONE_PROMPT = (
     "Read TASK.md. Run `git log --oneline` to see which milestones are already "
     "committed. Complete the NEXT not-yet-committed milestone using TDD (write the "
@@ -562,11 +576,59 @@ def cmd_milestones_hermes(match, tail, warn_at, model, total, max_steps, max_sta
         return _harness_exit("BAIL", f"max-steps={max_steps}", done, total, max_steps, f)
 
 
+def cmd_stress(match, tail, warn_at, host, model, api_key, users, rate, duration):
+    outdir = HERE / "build-locust-vllm"
+    outdir.mkdir(exist_ok=True)
+    logfile = outdir / "run.log"
+    csv_prefix = str(outdir / "stress")
+    locustfile = HERE / "locustfile.py"
+
+    print(f"== locust stress run ==")
+    print(f"   host={host}  model={model}  users={users}  rate={rate}  duration={duration}")
+    print(f"   tee -> {logfile}\n")
+
+    start_observers(match, tail, warn_at)
+
+    status = "DONE"
+    reason = "stress-complete"
+    with logfile.open("w") as f:
+        try:
+            run = sh.uv(
+                "run", "--with", "locust",
+                "locust", "-f", str(locustfile),
+                "--host", host,
+                "--headless",
+                "-u", str(users),
+                "-r", str(rate),
+                "-t", str(duration),
+                "--csv", csv_prefix,
+                _iter=True, _err_to_out=True,
+                _env={**os.environ, "VLLM_MODEL": model, "VLLM_API_KEY": api_key},
+            )
+            for line in run:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                f.write(line)
+                f.flush()
+        except ErrorReturnCode as e:
+            print(f"{R}locust exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status = "BAIL"
+            reason = f"locust-rc={e.exit_code}"
+
+    msg = (f"=== HARNESS:{status} reason={reason} "
+           f"users={users} rate={rate} duration={duration} ===")
+    print(msg, flush=True)
+    with logfile.open("a") as f:
+        f.write(msg + "\n")
+    (outdir / "harness.status").write_text(msg + "\n")
+    return 0 if status == "DONE" else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("cmd", nargs="?", default="help",
                     choices=["observe", "loop", "watch", "milestones",
-                             "opencode-milestones", "hermes-milestones", "help"])
+                             "opencode-milestones", "hermes-milestones", "stress", "help"])
     ap.add_argument("--match", default="coder-next")
     ap.add_argument("--tail", default="0")
     ap.add_argument("--warn-at", type=int, default=118000)
@@ -575,6 +637,12 @@ def main() -> int:
     ap.add_argument("--max-steps", type=int, default=40)
     ap.add_argument("--max-stalls", type=int, default=4)
     ap.add_argument("--step-timeout", type=int, default=600)
+    # stress flags
+    ap.add_argument("--host", default=STRESS_HOST)
+    ap.add_argument("--api-key", default="local")
+    ap.add_argument("--users", type=int, default=8)
+    ap.add_argument("--rate", type=int, default=2)
+    ap.add_argument("--duration", default="5m")
     args = ap.parse_args()
     tail = args.tail if args.tail == "all" else int(args.tail)
 
@@ -597,6 +665,10 @@ def main() -> int:
             return cmd_milestones_hermes(args.match, tail, args.warn_at, model,
                                          args.total, args.max_steps, args.max_stalls,
                                          args.step_timeout)
+        case "stress":
+            model = args.model if args.model != SESSION_MODEL else STRESS_MODEL
+            return cmd_stress(args.match, tail, args.warn_at, args.host, model,
+                              args.api_key, args.users, args.rate, args.duration)
         case "loop":
             return cmd_loop()
         case _:

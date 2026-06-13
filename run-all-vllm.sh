@@ -5,15 +5,18 @@
 #
 # Usage: ./run-all-vllm.sh [--max-steps N] [--max-stalls N] [agent ...]
 #
-# Agents: pi, opencode, hermes (default: all three)
+# Agents: pi, opencode, hermes (default: all three), locust (opt-in)
 #
 # Examples:
-#   ./run-all-vllm.sh                        # run all three
+#   ./run-all-vllm.sh                        # run all three coding agents
 #   ./run-all-vllm.sh pi                     # run only pi
 #   ./run-all-vllm.sh pi hermes              # run pi then hermes
 #   ./run-all-vllm.sh --max-steps 10 pi      # pi with custom step limit
+#   ./run-all-vllm.sh locust                 # synthetic agentic load test only
+#   DURATION=30s ./run-all-vllm.sh locust    # short smoke-test of the wiring
 #
 # Logs: build-pi-vllm/run.log, build-opencode-vllm/run.log, build-hermes-vllm/run.log
+#       build-locust-vllm/run.log
 # Status: build-pi-vllm/harness.status (etc.)
 
 set -euo pipefail
@@ -25,6 +28,9 @@ MAX_STALLS="${MAX_STALLS:-8}"
 VLLM_HOST="${VLLM_HOST:-localhost}"
 VLLM_PORT="${VLLM_PORT:-61515}"
 VLLM_HEALTH_RETRIES="${VLLM_HEALTH_RETRIES:-240}"
+USERS="${USERS:-8}"
+RATE="${RATE:-2}"
+DURATION="${DURATION:-5m}"
 
 cd "$AGENT_TEST"
 
@@ -87,6 +93,19 @@ run_hermes() {
     log "hermes run finished (rc=$rc)"
 }
 
+run_locust() {
+    log "=== starting locust stress run ==="
+    set +e
+    $MISE exec -- ./run.py stress \
+        --users "$USERS" \
+        --rate "$RATE" \
+        --duration "$DURATION"
+    local rc=$?
+    set -e
+    # build-locust-vllm/ is created by run.py stress directly; nothing to archive.
+    log "locust run finished (rc=$rc)"
+}
+
 print_summary() {
     local agents=("$@")
     log "=== all runs complete ==="
@@ -127,7 +146,8 @@ main() {
             pi)       run_pi ;;
             opencode) run_opencode ;;
             hermes)   run_hermes ;;
-            *) echo "Unknown agent: $agent (choose from: pi, opencode, hermes)" >&2; exit 1 ;;
+            locust)   run_locust ;;
+            *) echo "Unknown agent: $agent (choose from: pi, opencode, hermes, locust)" >&2; exit 1 ;;
         esac
     done
 

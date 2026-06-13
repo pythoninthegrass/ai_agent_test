@@ -29,9 +29,15 @@ A **compaction-stress harness** that drives three different AI coding agents (`p
 
 # Just watch Docker container logs for CtxLimit signals
 ./run.py observe
+
+# Synthetic agentic load test (locust, targets :61519 proxy)
+./run.py stress                              # 8 users, ramp 2/s, 5m
+./run.py stress --duration 30s --users 2    # smoke-test
+./run-all-vllm.sh locust                    # same, via the shell runner
+DURATION=30s ./run-all-vllm.sh locust       # smoke-test via shell runner
 ```
 
-Output artifacts land in `build-pi-vllm/`, `build-opencode-vllm/`, `build-hermes-vllm/` after each run: `run.log` and `harness.status`.
+Output artifacts land in `build-pi-vllm/`, `build-opencode-vllm/`, `build-hermes-vllm/` after each run: `run.log` and `harness.status`. The load test writes to `build-locust-vllm/` directly.
 
 ## Architecture
 
@@ -60,14 +66,20 @@ The agent builds here from scratch each run. It is a git repo (seeded by `reset_
 
 ### `run-all-vllm.sh` — sequential multi-agent runner
 
-Waits for vLLM health on `:61515`, then calls `run.py milestones`, `run.py opencode-milestones`, `run.py hermes-milestones` in sequence, archiving `build/` to `build-{agent}-vllm/` between runs.
+Waits for vLLM health on `:61515`, then calls the selected agent commands in sequence, archiving `build/` to `build-{agent}-vllm/` between milestone runs. The `locust` agent is opt-in (`./run-all-vllm.sh locust`); the default set remains `pi opencode hermes`.
+
+### `locustfile.py` — synthetic agentic load test
+
+Locust file that simulates concurrent coding-agent traffic against the `:61519` proxy: a fixed system prompt + tool block (exercises prefix caching), multi-turn conversations with growing context, and synthetic tool-call/tool-result turns appended each iteration. This is *complementary* to the milestone harness — it generates realistic traffic shape without actually solving the coding task. `run.py stress` starts the Docker `CtxLimit` observers before launching Locust headless, so context-shift signals appear alongside Locust's per-request stats. Artifacts land in `build-locust-vllm/`.
 
 ## Key constants (in `run.py`)
 
 - `SESSION_MODEL` — default pi model: `koboldcpp/qwen3-coder-next-builder`
 - `OPENCODE_MODEL` — default opencode model: `local-builder/qwen3-coder-next` (proxy on `:61519`)
 - `HERMES_MODEL` — default hermes model: `qwen3-coder-next`
-- vLLM endpoint: `:61515`; opencode/hermes proxy: `:61519`
+- `STRESS_HOST` — default locust target: `http://127.0.0.1:61519`
+- `STRESS_MODEL` — default locust model name: `qwen3-coder-next`
+- vLLM endpoint: `:61515`; opencode/hermes/locust proxy: `:61519`
 
 ## The task being graded (`TASK.md`)
 
