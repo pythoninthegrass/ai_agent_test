@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SWEAGENT="${HOME}/.local/bin/sweagent"
-CONFIG="${HOME}/git/swe-agent/config/default.yaml"
+CONFIG="${HOME}/git/swe-agent/config/bash_only.yaml"
 API_BASE="${API_BASE:-http://127.0.0.1:61519/v1}"
 API_KEY="${API_KEY:-local}"
 MODEL="${MODEL:-openai/qwen3-coder-next}"
@@ -40,6 +40,7 @@ echo ""
     --agent.model.api_key "${API_KEY}" \
     --agent.model.per_instance_cost_limit 0 \
     --agent.model.total_cost_limit 0 \
+    --agent.model.per_instance_call_limit 0 \
     --agent.model.max_input_tokens "${MAX_INPUT_TOKENS}" \
     --num_workers "${WORKERS}" \
     --random_delay_multiplier 2 \
