@@ -20,7 +20,7 @@ WORKERS="${WORKERS:-16}"
 SUBSET="${SUBSET:-verified}"
 SPLIT="${SPLIT:-test}"
 SLICE="${SLICE:-:50}"
-MAX_INPUT_TOKENS="${MAX_INPUT_TOKENS:-30000}"
+MAX_INPUT_TOKENS="${MAX_INPUT_TOKENS:-65536}"
 
 TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
 OUTDIR="${HOME}/git/ai_agent_test/runs/swe-bench-${SUBSET}-${WORKERS}w-${TIMESTAMP}"
