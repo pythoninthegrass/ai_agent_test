@@ -3,6 +3,7 @@
 CLAUDE.md
 build-*/
 rpncalc/
+runs/
 tests/
 
 # General
