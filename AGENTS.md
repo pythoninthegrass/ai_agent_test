@@ -84,3 +84,17 @@ Locust file that simulates concurrent coding-agent traffic against the `:61519` 
 ## The task being graded (`TASK.md`)
 
 18 milestones building `rpncalc/` (scaffold → lexer → evaluator → errors → variables → comparisons → conditionals → comments → stack-ops → functions → repl → file runner → line-number errors). The agent must follow strict TDD: test first, full `pytest -v` between each milestone, one commit per milestone with message `milestone N: <slug>`.
+
+## Context7
+
+Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
+
+### Libraries
+
+- astral-sh/ruff
+- astral-sh/uv
+- hbnetwork/python-decouple
+- hypothesisworks/hypothesis
+- jdx/mise
+- mostlygeek/llama-swap
+- mrlesk/backlog.md
