@@ -2,21 +2,43 @@
 # SWE-bench stress run via sweagent (uv tool, editable from ~/git/swe-agent)
 #
 # Usage:
-#   ./run-swe-bench.sh                        # 16 workers, 50 tasks, verified
-#   WORKERS=4 SLICE=:10 ./run-swe-bench.sh    # quick smoke test
+#   ./run-swe-bench.sh                        # 8 workers, 50 tasks, verified
+#   WORKERS=4 SLICE=:4 ./run-swe-bench.sh     # quick smoke test
 #   SUBSET=lite ./run-swe-bench.sh            # SWE-bench Lite instead of Verified
 #
+# Env vars (can be set in .env alongside this script):
+#   HF_TOKEN            HuggingFace token (avoids rate limits on dataset download)
+#   WORKERS             concurrent sweagent workers (default: 8)
+#   SUBSET              swe_bench subset: verified or lite (default: verified)
+#   SPLIT               dataset split (default: test)
+#   SLICE               task slice, e.g. :50 or :10 (default: :50)
+#   MAX_INPUT_TOKENS    per-session context cap (default: 65536)
+#   API_BASE            proxy endpoint (default: http://127.0.0.1:61519/v1)
+#   API_KEY             API key for the proxy (default: local)
+#   MODEL               litellm model name (default: openai/qwen3-coder-next)
+#
 # Artifacts land in runs/swe-bench-<subset>-<workers>w-<timestamp>/
-# Score with: sweagent merge-preds + swebench evaluate (see bottom of file)
+# Score with: ~/.local/bin/mise exec -- uv run --with swebench \
+#   python -m swebench.harness.run_evaluation ...
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source .env if present (provides HF_TOKEN and other overrides)
+if [ -f "${SCRIPT_DIR}/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/.env"
+    set +a
+fi
 
 SWEAGENT="${HOME}/.local/bin/sweagent"
 CONFIG="${HOME}/git/swe-agent/config/bash_only.yaml"
 API_BASE="${API_BASE:-http://127.0.0.1:61519/v1}"
 API_KEY="${API_KEY:-local}"
 MODEL="${MODEL:-openai/qwen3-coder-next}"
-WORKERS="${WORKERS:-16}"
+WORKERS="${WORKERS:-8}"
 SUBSET="${SUBSET:-verified}"
 SPLIT="${SPLIT:-test}"
 SLICE="${SLICE:-:50}"
@@ -55,9 +77,9 @@ echo ""
 echo "=== done: ${OUTDIR} ==="
 echo ""
 echo "To score:"
-echo "  pip install swebench"
-echo "  python -m swebench.harness.run_evaluation \\"
-echo "    --predictions_path ${OUTDIR}/preds.jsonl \\"
+echo "  ~/.local/bin/mise exec -- uv run --with swebench \\"
+echo "    python -m swebench.harness.run_evaluation \\"
+echo "    --predictions_path ${OUTDIR}/preds.json \\"
 echo "    --swe_bench_tasks princeton-nlp/SWE-bench_Verified \\"
 echo "    --max_workers 8 \\"
 echo "    --run_id swe-bench-${SUBSET}-${WORKERS}w-${TIMESTAMP}"
