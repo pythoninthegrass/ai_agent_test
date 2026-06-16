@@ -1,11 +1,14 @@
 # ETC
-*.log
-.claude/**/*.lock
-CLAUDE.md
+build/
 build-*/
+logs/
 rpncalc/
 runs/
 tests/
+*.log
+.claude/**/*.lock
+CLAUDE.md
+swe-bench-*.json
 
 # General
 .DS_Store
