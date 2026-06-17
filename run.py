@@ -107,7 +107,7 @@ PROMPT = (
     "Begin with milestone 1 now."
 )
 
-SESSION_MODEL = "koboldcpp/qwen3-coder-next-builder"
+SESSION_MODEL = "lemonade/Qwen3.6-35B-A3B-MTP-GGUF"
 OPENCODE_MODEL = "local-builder/qwen3-coder-next"
 OPENCODE_BIN = shutil.which("opencode") or "/home/lance/.opencode/bin/opencode"
 HERMES_MODEL = "Qwen3.6-35B-A3B-MTP-GGUF"
