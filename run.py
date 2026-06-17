@@ -36,6 +36,8 @@ Usage:
                                     Default model: qwen3-coder-next (proxy 61519 via config.yaml).
                                     Requires the hermes server to already be running if using
                                     the API server mode; CLI mode starts hermes per-step.
+    run.py pi-pacman               One-shot pacman.html generation via pi with --system-prompt.
+                                    Artifacts in artifacts/pi/.
     run.py pacman                  One-shot pacman.html generation via hermes Python library with
                                     a custom ephemeral system prompt (vanilla web dev expert).
                                     Artifacts in artifacts/hermes/.
@@ -659,6 +661,57 @@ def cmd_milestones_hermes(match, tail, warn_at, model, total, max_steps, max_sta
         return _harness_exit("BAIL", f"max-steps={max_steps}", done, total, max_steps, f)
 
 
+def cmd_pi_pacman(model):
+    outdir = HERE / "artifacts" / "pi"
+    outdir.mkdir(parents=True, exist_ok=True)
+    logfile = outdir / "run.log"
+    htmlfile = outdir / "pacman.html"
+
+    print(f"== pi pacman ==")
+    print(f"   model={model}  out={outdir}\n")
+
+    output_lines = []
+    status = "DONE"
+    reason = "complete"
+
+    with logfile.open("w") as f:
+        try:
+            run = sh.pi(
+                "-p", "--model", model,
+                "--system-prompt", PACMAN_SYSTEM_PROMPT,
+                PACMAN_USER_PROMPT,
+                _cwd=str(outdir), _iter=True,
+                _err_to_out=True, _new_session=True, _bg_exc=False,
+            )
+            for line in run:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                f.write(line)
+                f.flush()
+                output_lines.append(line)
+        except ErrorReturnCode as e:
+            print(f"{R}pi pacman exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status = "BAIL"
+            reason = f"rc={e.exit_code}"
+
+        full_output = "".join(output_lines)
+        m = re.search(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
+        if m:
+            html = m.group(1).strip()
+            htmlfile.write_text(html)
+            print(f"\n{G}pacman.html written ({len(html):,} bytes) -> {htmlfile}{X}")
+        else:
+            htmlfile.write_text(full_output)
+            print(f"\n{Y}no <implementation> tags found; saved full response -> {htmlfile}{X}")
+
+        msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
+        print(msg, flush=True)
+        f.write(msg + "\n")
+
+    (outdir / "harness.status").write_text(msg + "\n")
+    return 0 if status == "DONE" else 1
+
+
 def cmd_hermes_pacman(model):
     outdir = HERE / "artifacts" / "hermes"
     outdir.mkdir(exist_ok=True)
@@ -765,7 +818,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("cmd", nargs="?", default="help",
                     choices=["observe", "loop", "watch", "milestones",
-                             "opencode-milestones", "hermes-milestones", "pacman",
+                             "opencode-milestones", "hermes-milestones", "pi-pacman", "pacman",
                              "stress", "help"])
     ap.add_argument("--match", default="coder-next")
     ap.add_argument("--tail", default="0")
@@ -803,6 +856,8 @@ def main() -> int:
             return cmd_milestones_hermes(args.match, tail, args.warn_at, model,
                                          args.total, args.max_steps, args.max_stalls,
                                          args.step_timeout)
+        case "pi-pacman":
+            return cmd_pi_pacman(args.model)
         case "pacman":
             model = args.model if args.model != SESSION_MODEL else HERMES_MODEL
             return cmd_hermes_pacman(model)
