@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "local-builder/qwen3-coder-next",
+  "model": "lemonade/Qwen3.6-35B-A3B-MTP-GGUF",
   "provider": {
     "lemonade": {
       "npm": "@ai-sdk/openai-compatible",
@@ -22,6 +22,14 @@
         },
         "Qwen_Qwen3.6-35B-A3B-Q5_K_M": {
           "name": "Qwen3.6-35B-A3B (Q5_K_M, lemonade)",
+          "limit": {
+            "context": 114688,
+            "input": 114688,
+            "output": 8192
+          }
+        },
+        "Qwen3.6-35B-A3B-MTP-GGUF": {
+          "name": "Qwen3.6-35B-A3B MTP (UD-Q4_K_XL, lemonade)",
           "limit": {
             "context": 114688,
             "input": 114688,
