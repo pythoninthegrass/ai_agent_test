@@ -38,7 +38,7 @@ Usage:
                                     the API server mode; CLI mode starts hermes per-step.
     run.py pacman                  One-shot pacman.html generation via hermes Python library with
                                     a custom ephemeral system prompt (vanilla web dev expert).
-                                    Artifacts in build-hermes-pacman-vllm/.
+                                    Artifacts in artifacts/hermes/.
     run.py stress                   Synthetic agentic-load test via Locust against the :61519
                                     proxy: concurrent agent sessions, growing multi-turn
                                     context, tool-call/tool-result turns. Streams the same
@@ -660,7 +660,7 @@ def cmd_milestones_hermes(match, tail, warn_at, model, total, max_steps, max_sta
 
 
 def cmd_hermes_pacman(model):
-    outdir = HERE / "build-hermes-pacman-vllm"
+    outdir = HERE / "artifacts" / "hermes"
     outdir.mkdir(exist_ok=True)
     logfile = outdir / "run.log"
     htmlfile = outdir / "pacman.html"
