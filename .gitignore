@@ -1,4 +1,5 @@
 # ETC
+artifacts/
 build/
 build-*/
 logs/
