@@ -694,15 +694,14 @@ def cmd_pi_pacman(model):
             status = "BAIL"
             reason = f"rc={e.exit_code}"
 
-        full_output = "".join(output_lines)
-        m = re.search(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
-        if m:
-            html = m.group(1).strip()
-            htmlfile.write_text(html)
-            print(f"\n{G}pacman.html written ({len(html):,} bytes) -> {htmlfile}{X}")
+        # pi writes pacman.html directly via its file tools; check it exists with real content.
+        if htmlfile.exists() and htmlfile.stat().st_size > 1024:
+            print(f"\n{G}pacman.html written ({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
         else:
-            htmlfile.write_text(full_output)
-            print(f"\n{Y}no <implementation> tags found; saved full response -> {htmlfile}{X}")
+            if status == "DONE":
+                status = "BAIL"
+                reason = "no-html"
+            print(f"\n{R}pacman.html missing or too small after pi run{X}")
 
         msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
         print(msg, flush=True)
