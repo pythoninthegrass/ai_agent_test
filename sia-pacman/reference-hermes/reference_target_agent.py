@@ -28,10 +28,14 @@ MAX_RETRIES = 3
 
 SYSTEM_PROMPT = (
     "You are an expert vanilla web developer. "
-    "Build single-file HTML5 applications with inline CSS and JavaScript and no external dependencies. "
-    "You produce COMPLETE, WORKING HTML files — nothing placeholder, nothing abbreviated. "
-    "When asked to write a file, write it to the current working directory."
+    "Build single-file HTML5 applications with inline CSS and JavaScript and no external dependencies."
 )
+
+# /pacman loads the hermes skill at ~/.hermes/skills/game-dev/pacman/SKILL.md —
+# the same prompt that produces 14/14 in standalone runs. Keeping this as the
+# default user prompt means the meta-agent starts from a proven 14/14 baseline
+# and can improve from there (e.g. tighter retry logic, different instructions).
+USER_PROMPT = "/pacman"
 
 # Inline script executed inside the hermes venv. Reads prompt from env vars and
 # calls AIAgent, which writes pacman.html directly via its file tools.
@@ -51,26 +55,6 @@ print(response)
 """
 
 
-def extract_pacman_spec(task_md: str) -> str:
-    """Extract the Pac-Man spec body from task.md (content after the --- separator
-    under the '## Pac-Man specification' heading)."""
-    marker = "## Pac-Man specification"
-    idx = task_md.find(marker)
-    if idx != -1:
-        dash = task_md.find("---", idx)
-        if dash != -1:
-            return task_md[dash + 3:].strip()
-    # Fallback: return the whole file
-    return task_md.strip()
-
-
-def build_user_prompt(spec: str, working_dir: str) -> str:
-    return (
-        f"Write a complete, playable Pac-Man clone and save it as `pacman.html` "
-        f"in the current directory (`{working_dir}`).\n\n"
-        f"Do NOT ask questions. Write the file directly.\n\n"
-        f"{spec}"
-    )
 
 
 def run_hermes(user_prompt: str, working_dir: str) -> tuple[bool, str, float]:
@@ -110,17 +94,10 @@ def main():
     parser.add_argument("--working_dir", type=Path, required=True)
     args = parser.parse_args()
 
-    dataset_dir = args.dataset_dir.resolve()
     working_dir = args.working_dir.resolve()
     working_dir.mkdir(parents=True, exist_ok=True)
 
-    task_md_path = dataset_dir / "task.md"
-    if not task_md_path.exists():
-        print(f"[ERROR] task.md not found at {task_md_path}", flush=True)
-        sys.exit(1)
-
-    spec = extract_pacman_spec(task_md_path.read_text(encoding="utf-8"))
-    user_prompt = build_user_prompt(spec, str(working_dir))
+    user_prompt = USER_PROMPT
 
     html_path = working_dir / "pacman.html"
     trajectory_path = working_dir / "agent_execution.json"
