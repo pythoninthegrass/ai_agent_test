@@ -1,0 +1,7 @@
+{
+    "provider_id": "lemonade",
+    "name": "Lemonade (local Qwen3.6)",
+    "client_kind": "openai",
+    "base_url": "http://localhost:13305/api/v1",
+    "api_key_env": "LEMONADE_API_KEY"
+}

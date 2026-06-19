@@ -1,0 +1,7 @@
+{
+    "profile_id": "lemonade-meta",
+    "name": "Meta-agent on local lemonade (Qwen3.6 pydantic-ai)",
+    "agent_impl": "pydantic-ai",
+    "model": "Qwen3.6-35B-A3B-MTP-GGUF",
+    "provider_id": "lemonade"
+}

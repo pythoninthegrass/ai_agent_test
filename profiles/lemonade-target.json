@@ -1,0 +1,7 @@
+{
+    "profile_id": "lemonade-target",
+    "name": "Target agent on local lemonade (Qwen3.6)",
+    "model": "Qwen3.6-35B-A3B-MTP-GGUF",
+    "provider_id": "lemonade",
+    "agent_reference": "default"
+}
