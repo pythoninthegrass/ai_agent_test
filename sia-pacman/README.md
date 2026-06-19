@@ -85,6 +85,8 @@ SIA reads the file regardless of partial scores.
 
 ## Results across runs
 
+### pi target agent (lemonade OpenAI client direct)
+
 | Run | Peak score | Lines (final) | Notes |
 |-----|-----------|---------------|-------|
 | run_1 | 14/14 | 323 | Perfect on gen_1 |
@@ -92,6 +94,25 @@ SIA reads the file regardless of partial scores.
 | run_3 | 14/14 | 1143 | Bloated; gen_5 crashed |
 | run_4 | 14/14 | 341 | First run with size cap |
 | run_5 | 14/14 | 381 | Stable; all 5 gens completed |
+
+### hermes target agent (`--target-agent-profile hermes-target`)
+
+| Run | Peak score | Lines (final) | Notes |
+|-----|-----------|---------------|-------|
+| run_6 | 12/14 | 342 | Reference used raw spec; meta-agent generated broken gen_1 |
+| run_7 | 14/14 | 349 | Reference uses `/pacman` skill; 14/14 on gen_2 and gen_4 |
+
+To run with hermes:
+```bash
+source .env
+SIA_MAX_TURNS=100 sia run \
+  --task_dir sia-pacman \
+  --meta-agent-profile lemonade-meta \
+  --target-agent-profile hermes-target \
+  --max_gen 5 \
+  --run_id <N> \
+  --no-web
+```
 
 ## Known issues
 
