@@ -1,0 +1,10 @@
+{
+    "profile_id": "hermes-target",
+    "name": "Target agent via hermes AIAgent (Qwen3.6)",
+    "model": "Qwen3.6-35B-A3B-MTP-GGUF",
+    "provider_id": "lemonade",
+    "agent_reference": {
+        "source": "../sia-pacman/reference-hermes/",
+        "entrypoint": "reference_target_agent.py"
+    }
+}
