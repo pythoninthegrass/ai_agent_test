@@ -162,7 +162,7 @@ def run_checks(html_path: Path) -> dict:
                 if (!p) return null;
                 return { col: p.col, row: p.row, px: p.px, py: p.py, dir: p.dir };
             }""")
-            if pac_state and pac_state.get("col") is not None:
+            if pac_state and pac_state.get("col") is not None and pac_state.get("px") is not None:
                 TILE = 20
                 expected_px = pac_state["col"] * TILE + TILE / 2
                 drift_x = abs(pac_state["px"] - expected_px)
