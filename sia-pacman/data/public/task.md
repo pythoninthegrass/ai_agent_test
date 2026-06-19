@@ -56,6 +56,20 @@ complete, single-file Pac-Man clone, then save the HTML to `working_dir/pacman.h
 - **Empty output from model**: The model occasionally returns an empty response. Retry the
   API call at least 3 times before giving up.
 
+## Agent code constraints (meta-agent must follow these)
+
+- **Size limit: ≤ 400 lines / ≤ 15 KB.** The target agent's job is to build a prompt and
+  call an API — it does not need to be large. Every line added is context fed into lemonade's
+  prompt; bloated agents cause lemonade to return empty responses and waste retries.
+- **Prefer surgical edits over rewrites.** Fix the specific failing check; do not restructure
+  working code. If gen N passes 13/14, change only what is needed to fix the failing check —
+  do not touch the 13 passing ones.
+- **Do not add new helper functions, classes, or validation layers** unless a check is
+  explicitly failing because they are missing. New abstractions add surface area for new bugs.
+- **The prompt sent to lemonade is the most important part.** When a check fails, the root
+  cause is almost always a bad instruction in the prompt — add or tighten that instruction
+  rather than adding Python-side post-processing.
+
 ## LLM endpoint
 
 - Base URL: `http://localhost:13305/api/v1` (lemonade server)
