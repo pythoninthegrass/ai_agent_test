@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3.0"
+
+set: ['e', 'u', 'pipefail']
+shopt: ['globstar']
+
+dotenv: ['.env']
+
+env:
+  VENV_DIR: "{{.ROOT_DIR}}/.venv"
+  PATH: "{{.VENV_DIR}}/bin:{{.PATH}}"
+
+includes:
+  uv:
+    taskfile: ./taskfiles/uv.yml
+
+tasks:
+  default:
+    desc: "List available tasks"
+    cmds:
+      - task --list
+
+  pre-commit:
+    desc: "Run pre-commit hooks"
+    cmds:
+      - pre-commit run --all-files
+
+  lint:
+    desc: "Run linter"
+    sources:
+      - "**/*.py"
+      - "!build/**"
+    cmds:
+      - ruff check --fix --respect-gitignore
+
+  format:
+    desc: "Run formatter"
+    sources:
+      - "**/*.py"
+      - "!build/**"
+    cmds:
+      - ruff format --respect-gitignore
+
+  test:
+    desc: "Run tests"
+    cmds:
+      - pytest
+
+  run:
+    desc: "Run harness command (task run -- milestones)"
+    cmds:
+      - ./scripts/run.py {{.CLI_ARGS}}
+
+  run-all:
+    desc: "Run agents against vLLM (task run-all -- pi hermes)"
+    cmds:
+      - ./scripts/run-all-vllm.sh {{.CLI_ARGS}}
+
+  swe-bench:
+    desc: "Run SWE-bench stress test"
+    cmds:
+      - ./scripts/run-swe-bench.sh
+
+  pyclean:
+    desc: "Remove .pyc and __pycache__"
+    cmds:
+      - |
+        args=(
+          .
+          --debris
+          --verbose
+        )
+        case "{{.CLI_ARGS}}" in
+          dry-run)
+            pyclean "${args[@]}" --dry-run
+            ;;
+          *)
+            pyclean "${args[@]}"
+            ;;
+        esac

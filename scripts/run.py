@@ -97,7 +97,7 @@ from decouple import config
 from git import Repo
 from sh import ErrorReturnCode
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 BUILD = HERE / "build"
 TASK = HERE / "TASK.md"
 PROMPT = (

@@ -21,8 +21,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MISE="${MISE:-$HOME/.local/bin/mise}"
-AGENT_TEST="${AGENT_TEST:-$HOME/git/ai_agent_test}"
+AGENT_TEST="${AGENT_TEST:-$(dirname "$SCRIPT_DIR")}"
 MAX_STEPS="${MAX_STEPS:-20}"
 MAX_STALLS="${MAX_STALLS:-8}"
 VLLM_HOST="${VLLM_HOST:-localhost}"
@@ -59,7 +60,7 @@ archive_build() {
 run_pi() {
     log "=== starting pi run ==="
     set +e
-    $MISE exec -- ./run.py milestones \
+    $MISE exec -- ./scripts/run.py milestones \
         --model koboldcpp/qwen3-coder-next-builder \
         --max-steps "$MAX_STEPS" \
         --max-stalls "$MAX_STALLS"
@@ -72,7 +73,7 @@ run_pi() {
 run_opencode() {
     log "=== starting opencode run ==="
     set +e
-    $MISE exec -- ./run.py opencode-milestones \
+    $MISE exec -- ./scripts/run.py opencode-milestones \
         --max-steps "$MAX_STEPS" \
         --max-stalls "$MAX_STALLS"
     local rc=$?
@@ -84,7 +85,7 @@ run_opencode() {
 run_hermes() {
     log "=== starting hermes run ==="
     set +e
-    $MISE exec -- ./run.py hermes-milestones \
+    $MISE exec -- ./scripts/run.py hermes-milestones \
         --max-steps "$MAX_STEPS" \
         --max-stalls "$MAX_STALLS"
     local rc=$?
@@ -96,7 +97,7 @@ run_hermes() {
 run_locust() {
     log "=== starting locust stress run ==="
     set +e
-    $MISE exec -- ./run.py stress \
+    $MISE exec -- ./scripts/run.py stress \
         --users "$USERS" \
         --rate "$RATE" \
         --duration "$DURATION"
