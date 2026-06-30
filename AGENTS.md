@@ -8,40 +8,30 @@ A **compaction-stress harness** that drives three different AI coding agents (`p
 
 ## Running the harness
 
-`run.py` is a self-contained `uv run --script`; no venv setup needed:
+Scripts live in `scripts/` and are abstracted by `taskfile.yml`. `scripts/run.py` is a self-contained `uv run --script`; no venv setup needed.
 
-```bash
-# Drive all three agents sequentially (waits for vLLM on :61515 first)
-./run-all-vllm.sh
-
-# Run a single agent
-./run-all-vllm.sh pi
-./run-all-vllm.sh opencode hermes   # two agents, in order
-
-# Drive one agent directly
-./run.py milestones                 # pi (default model)
-./run.py opencode-milestones
-./run.py hermes-milestones
-
-# Common flags
-./run.py milestones --max-steps 10 --max-stalls 3
-./run.py milestones --model koboldcpp/some-other-model
-
-# Just watch Docker container logs for CtxLimit signals
-./run.py observe
-
-# Synthetic agentic load test (locust, targets :61519 proxy)
-./run.py stress                              # 8 users, ramp 2/s, 5m
-./run.py stress --duration 30s --users 2    # smoke-test
-./run-all-vllm.sh locust                    # same, via the shell runner
-DURATION=30s ./run-all-vllm.sh locust       # smoke-test via shell runner
-```
+| Task command | Equivalent script | Notes |
+|---|---|---|
+| `task run -- milestones` | `./scripts/run.py milestones` | pi, default model |
+| `task run -- opencode-milestones` | `./scripts/run.py opencode-milestones` | |
+| `task run -- hermes-milestones` | `./scripts/run.py hermes-milestones` | |
+| `task run -- milestones --max-steps 10 --max-stalls 3` | `./scripts/run.py milestones --max-steps 10 --max-stalls 3` | |
+| `task run -- milestones --model koboldcpp/some-other-model` | `./scripts/run.py milestones --model koboldcpp/some-other-model` | |
+| `task run -- observe` | `./scripts/run.py observe` | stream Docker logs for CtxLimit signals |
+| `task run -- stress` | `./scripts/run.py stress` | 8 users, ramp 2/s, 5m |
+| `task run -- stress --duration 30s --users 2` | `./scripts/run.py stress --duration 30s --users 2` | smoke-test |
+| `task run-all` | `./scripts/run-all-vllm.sh` | all three agents sequentially |
+| `task run-all -- pi` | `./scripts/run-all-vllm.sh pi` | single agent |
+| `task run-all -- opencode hermes` | `./scripts/run-all-vllm.sh opencode hermes` | two agents, in order |
+| `task run-all -- locust` | `./scripts/run-all-vllm.sh locust` | synthetic load test via shell runner |
+| `DURATION=30s task run-all -- locust` | `DURATION=30s ./scripts/run-all-vllm.sh locust` | smoke-test |
+| `task swe-bench` | `./scripts/run-swe-bench.sh` | SWE-bench stress run |
 
 Output artifacts land in `build-pi-vllm/`, `build-opencode-vllm/`, `build-hermes-vllm/` after each run: `run.log` and `harness.status`. The load test writes to `build-locust-vllm/` directly.
 
 ## Architecture
 
-### `run.py` — the harness
+### `scripts/run.py` — the harness
 
 The core loop (`cmd_milestones` / `cmd_milestones_opencode` / `cmd_milestones_hermes`) follows the same pattern for all three agents:
 
@@ -64,15 +54,15 @@ The core loop (`cmd_milestones` / `cmd_milestones_opencode` / `cmd_milestones_he
 
 The agent builds here from scratch each run. It is a git repo (seeded by `reset_build()`). The harness never modifies `build/` directly after seeding — only the agent does. Milestone progress is measured by reading the git log of `build/`.
 
-### `run-all-vllm.sh` — sequential multi-agent runner
+### `scripts/run-all-vllm.sh` — sequential multi-agent runner
 
-Waits for vLLM health on `:61515`, then calls the selected agent commands in sequence, archiving `build/` to `build-{agent}-vllm/` between milestone runs. The `locust` agent is opt-in (`./run-all-vllm.sh locust`); the default set remains `pi opencode hermes`.
+Waits for vLLM health on `:61515`, then calls the selected agent commands in sequence, archiving `build/` to `build-{agent}-vllm/` between milestone runs. The `locust` agent is opt-in (`task run-all -- locust`); the default set remains `pi opencode hermes`.
 
-### `locustfile.py` — synthetic agentic load test
+### `scripts/locustfile.py` — synthetic agentic load test
 
-Locust file that simulates concurrent coding-agent traffic against the `:61519` proxy: a fixed system prompt + tool block (exercises prefix caching), multi-turn conversations with growing context, and synthetic tool-call/tool-result turns appended each iteration. This is *complementary* to the milestone harness — it generates realistic traffic shape without actually solving the coding task. `run.py stress` starts the Docker `CtxLimit` observers before launching Locust headless, so context-shift signals appear alongside Locust's per-request stats. Artifacts land in `build-locust-vllm/`.
+Locust file that simulates concurrent coding-agent traffic against the `:61519` proxy: a fixed system prompt + tool block (exercises prefix caching), multi-turn conversations with growing context, and synthetic tool-call/tool-result turns appended each iteration. This is *complementary* to the milestone harness — it generates realistic traffic shape without actually solving the coding task. `task run -- stress` starts the Docker `CtxLimit` observers before launching Locust headless, so context-shift signals appear alongside Locust's per-request stats. Artifacts land in `build-locust-vllm/`.
 
-## Key constants (in `run.py`)
+## Key constants (in `scripts/run.py`)
 
 - `SESSION_MODEL` — default pi model: `koboldcpp/qwen3-coder-next-builder`
 - `OPENCODE_MODEL` — default opencode model: `local-builder/qwen3-coder-next` (proxy on `:61519`)
