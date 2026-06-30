@@ -29,11 +29,12 @@ def _parse_score(text: str | None) -> int | None:
     return int(m.group()) if m else None
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parent
 
 try:
     TARGETS = {
-        "pi": sorted((HERE / "artifacts" / "pi").glob("*/pacman.html"))[-1],
-        "hermes": sorted((HERE / "artifacts" / "hermes").glob("*/pacman.html"), key=lambda p: p.parent.name)[-1],
+        "pi": sorted((REPO / "artifacts" / "pi").glob("*/pacman.html"))[-1],
+        "hermes": sorted((REPO / "artifacts" / "hermes").glob("*/pacman.html"), key=lambda p: p.parent.name)[-1],
     }
 except (IndexError, StopIteration):
     TARGETS = {}

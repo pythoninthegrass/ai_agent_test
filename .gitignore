@@ -5,7 +5,6 @@ build-*/
 logs/
 rpncalc/
 runs/
-tests/
 *.log
 .claude/**/*.lock
 CLAUDE.md

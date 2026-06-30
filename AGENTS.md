@@ -85,6 +85,42 @@ Locust file that simulates concurrent coding-agent traffic against the `:61519` 
 
 18 milestones building `rpncalc/` (scaffold → lexer → evaluator → errors → variables → comparisons → conditionals → comments → stack-ops → functions → repl → file runner → line-number errors). The agent must follow strict TDD: test first, full `pytest -v` between each milestone, one commit per milestone with message `milestone N: <slug>`.
 
+## Authoritative Pac-Man reference (`pacman.html`)
+
+The repo root contains `pacman.html` — a single-file, dependency-free Pac-Man clone that serves as the **answer key** for SIA runs that test local LLMs on game-building tasks. Agents are scored against it via the 14-check Playwright evaluator.
+
+### What it implements
+
+- **Maze + movement** — 28×31 grid, `TILE=20`, center-gated anti-clip model (direction changes and wall checks only at tile centers; hard-snap to center before turning). Pixel positions only; `Math.floor(px/TILE)` for tile lookup.
+- **Ghost AI** — Blinky (direct chase), Pinky (4 ahead), Inky (reflect Blinky through 2 ahead), Clyde (chase if >8 tiles away, else scatter). Scatter/Chase cycle: 7 s / 20 s, lock to chase after 4 cycles, reverse on phase transition.
+- **Release** — name-keyed `RELEASE = {pinky:200, inky:400, clyde:600}`, live `>=` check, ghosts walk out through the door. Blinky starts outside.
+- **Frightened + revive** — power pellet → 6 s frightened, escalating 200/400/800/1600 ghost-eat score, eaten ghosts float (eyes-only) directly back to house, revive and re-exit.
+- **Visuals** — hermes-style beveled walls (#2121DE/#5959FF), animated pac mouth + eye, domed wavy-skirt ghosts, pulsing power pellets, ♥ HUD, blink overlays.
+- **Spec globals** — `window.pac` with `col`/`row` `Object.defineProperty` getters (pac only); `window.ghosts` plain writable array; Enter key starts/restarts; score in `#score` DOM span.
+
+### Running the evaluator
+
+```bash
+# 14-check Playwright evaluator (must score 14/14)
+mkdir -p /tmp/pacman-ref && cp pacman.html /tmp/pacman-ref/
+uvx --with playwright python3 sia-pacman/data/public/evaluate.py --gen-dir /tmp/pacman-ref
+cat /tmp/pacman-ref/results.json   # score: 1.0 = 14/14
+
+# Gameplay invariant tests (ghost-kill, revive loop, no clipping)
+uvx --with playwright python3 tests/test_pacman_gameplay.py
+
+# Smoke-test the latest timestamped artifacts (pi + hermes)
+uvx --with playwright python3 tests/verify_pacman.py
+```
+
+### Test files
+
+| File | What it checks |
+|---|---|
+| `sia-pacman/data/public/evaluate.py` | 14-check canonical evaluator: HTML validity, canvas dimensions, score in DOM, dots eaten, non-black pixels, alive at 12 s, all 4 ghosts released, pac position coherent, zero JS errors |
+| `tests/test_pacman_gameplay.py` | Gameplay invariants: score jumps ≥200 on ghost eat, `eaten` flag clears after revive, pac snaps to tile center when stopped |
+| `tests/verify_pacman.py` | Smoke-test for the latest `artifacts/pi/` and `artifacts/hermes/` timestamped runs (structural + 12 s ghost-release check) |
+
 ## Context7
 
 Always use Context7 when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
