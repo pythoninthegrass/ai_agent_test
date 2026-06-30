@@ -5,6 +5,7 @@
 # dependencies = [
 #     "docker>=7.1.0",
 #     "GitPython>=3.1.43",
+#     "python-decouple>=3.8",
 #     "sh>=2.2.2",
 # ]
 # [tool.uv]
@@ -87,10 +88,12 @@ import shutil
 import sys
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import docker
 import sh
+from decouple import config
 from git import Repo
 from sh import ErrorReturnCode
 
@@ -107,14 +110,15 @@ PROMPT = (
     "Begin with milestone 1 now."
 )
 
-SESSION_MODEL = "lemonade/Qwen3.6-35B-A3B-MTP-GGUF"
-OPENCODE_MODEL = "local-builder/qwen3-coder-next"
-OPENCODE_BIN = shutil.which("opencode") or "/home/lance/.opencode/bin/opencode"
-HERMES_MODEL = "Qwen3.6-35B-A3B-MTP-GGUF"
-HERMES_BIN = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
-HERMES_PYTHON = "/home/lance/.hermes/hermes-agent/venv/bin/python"
-STRESS_HOST = "http://127.0.0.1:61519"
-STRESS_MODEL = "qwen3-coder-next"
+SESSION_MODEL       = config("SESSION_MODEL",       default="lemonade/Qwen3.6-35B-A3B-MTP-GGUF")
+OPENCODE_MODEL      = config("OPENCODE_MODEL",      default="local-builder/qwen3-coder-next")
+OPENCODE_BIN        = shutil.which("opencode") or "/home/lance/.opencode/bin/opencode"
+HERMES_MODEL        = config("HERMES_BUILDER",      default="Ornith-1.0-35B-GGUF-BF16")
+HERMES_ORCHESTRATOR = config("HERMES_ORCHESTRATOR", default="accounts/fireworks/models/minimax-m3")
+HERMES_BIN          = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
+HERMES_PYTHON       = "/home/lance/.hermes/hermes-agent/venv/bin/python"
+STRESS_HOST         = config("STRESS_HOST",         default="http://127.0.0.1:61519")
+STRESS_MODEL        = config("STRESS_MODEL",        default="qwen3-coder-next")
 MILESTONE_PROMPT = (
     "Read TASK.md. Run `git log --oneline` to see which milestones are already "
     "committed. Complete the NEXT not-yet-committed milestone using TDD (write the "
@@ -127,68 +131,17 @@ MILESTONE_PROMPT = (
 )
 
 PACMAN_SYSTEM_PROMPT = (
-    "You are the world's leading expert in vanilla web development, specifically in creating "
-    "high-performance, single-file web applications using only HTML5, CSS3, and ES6+ JavaScript. "
-    "You reject frameworks in favor of clean, efficient, and semantic code.\n\n"
-    "Your goal is to receive a requirement and produce a single, self-contained HTML file that "
-    "functions perfectly without external dependencies (no CDNs, no images, no libraries).\n\n"
-    "Because you must complete this task in a \"one-shot\" continuous generation, you must think "
-    "before you code. You will follow a strict \"Chain of Thought\" protocol to ensure correctness.\n\n"
-    "Follow this specific execution format for every response:\n\n"
-    "<analysis>\n"
-    "1. REQUIREMENTS BREAKDOWN:\n"
-    "   - List every functional and non-functional requirement.\n"
-    "   - Identify potential edge cases.\n\n"
-    "2. ARCHITECTURAL PLAN:\n"
-    "   - CSS Strategy: Define the variable system, layout approach (Flexbox/Grid), and responsive breakpoints.\n"
-    "   - JS Architecture: Define state management, event listeners, and core logic functions.\n"
-    "   - HTML Structure: specific semantic tags to be used.\n\n"
-    "3. PRE-MORTEM & STRATEGY:\n"
-    "   - Identify the most likely point of failure.\n"
-    "   - Define the solution for that specific failure point before writing code.\n"
-    "</analysis>\n\n"
-    "<implementation>\n"
-    "(Provide the complete, valid HTML string here. Include CSS in <style> and JS in <script> tags. "
-    "The code must be production-ready, accessible, and clean.)\n"
-    "</implementation>\n\n"
-    "<code_review>\n"
-    "Self-Correction and Validation Report:\n"
-    "1. Does the code meet all requirements listed in the analysis? [Yes/No]\n"
-    "2. Are there any distinct accessibility (a11y) violations?\n"
-    "3. Verify that no external libraries were used.\n"
-    "</code_review>"
+    "You are an expert vanilla web developer. "
+    "Build single-file HTML5 applications with inline CSS and JavaScript and no external dependencies."
 )
 
-PACMAN_USER_PROMPT = (
-    "[INTENT] Build a complete, playable Pac-Man clone as a self-contained HTML page that runs "
-    "by double-clicking the file.\n\n"
-    "[SCOPE]\n"
-    "  - Classic Pac-Man gameplay: navigate maze, eat dots, avoid ghosts\n"
-    "  - Core mechanics: maze with walls, dot collection, score, lives, 4 ghosts, power pellets "
-    "with frightened-ghost mode\n"
-    "  - Standard arcade elements: 4 ghosts with distinct AI personalities, wrap-around tunnel, "
-    "multiple levels\n\n"
-    "[APPROACH]\n"
-    "  - Single pacman.html file with inline <style> and <script>\n"
-    "  - HTML5 Canvas for rendering (grid-based maze, ~28x31 tiles like the original)\n"
-    "  - Vanilla JavaScript, no frameworks\n"
-    "  - Keyboard controls: arrow keys + WASD\n\n"
-    "[CONSTRAINTS]\n"
-    "  - Must work offline by opening the file directly in a browser\n"
-    "  - No external dependencies, CDNs, or asset files\n"
-    "  - No build step\n\n"
-    "[DELIVERABLE]\n"
-    "  - One complete pacman.html file\n\n"
-    "[DONE WHEN]\n"
-    "  - Game launches by double-clicking the file\n"
-    "  - Pac-Man moves with keyboard and respects maze walls\n"
-    "  - Dots are eatable; score increments\n"
-    "  - 4 ghosts move with distinct behaviors and chase Pac-Man\n"
-    "  - Power pellets turn ghosts vulnerable; eating a vulnerable ghost resets that ghost\n"
-    "  - Pac-Man loses a life on ghost contact when not powered\n"
-    "  - Game ends at 0 lives; restart works\n"
-    "  - Score and lives visible on screen"
-)
+_pacman_spec_raw = (HERE / ".claude" / "commands" / "pacman.md").read_text()
+# Strip YAML frontmatter (--- ... ---) so it isn't sent as prompt text
+_pacman_spec_body = re.sub(r"^---.*?---\s*", "", _pacman_spec_raw, flags=re.DOTALL).strip()
+# /think prefix activates Qwen3 extended reasoning via chat template
+PACMAN_USER_PROMPT = "/think\n\n" + _pacman_spec_body
+# Hermes uses its own skill system; /pacman loads ~/.hermes/skills/game-dev/pacman/SKILL.md
+PACMAN_USER_PROMPT_HERMES = "/pacman"
 
 _PACMAN_SCRIPT = """\
 import os, sys
@@ -661,8 +614,17 @@ def cmd_milestones_hermes(match, tail, warn_at, model, total, max_steps, max_sta
         return _harness_exit("BAIL", f"max-steps={max_steps}", done, total, max_steps, f)
 
 
+def _strip_code_fence(s: str) -> str:
+    """Remove a single leading/trailing markdown code fence from extracted HTML."""
+    s = s.strip()
+    s = re.sub(r"^```[a-z]*\n", "", s)
+    s = re.sub(r"\n```$", "", s)
+    return s.strip()
+
+
 def cmd_pi_pacman(model):
-    outdir = HERE / "artifacts" / "pi"
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    outdir = HERE / "artifacts" / "pi" / ts
     outdir.mkdir(parents=True, exist_ok=True)
     logfile = outdir / "run.log"
     htmlfile = outdir / "pacman.html"
@@ -677,7 +639,7 @@ def cmd_pi_pacman(model):
     with logfile.open("w") as f:
         try:
             run = sh.pi(
-                "-p", "--model", model,
+                "-p", "--model", model, "--thinking", "high",
                 "--system-prompt", PACMAN_SYSTEM_PROMPT,
                 PACMAN_USER_PROMPT,
                 _cwd=str(outdir), _iter=True,
@@ -694,14 +656,47 @@ def cmd_pi_pacman(model):
             status = "BAIL"
             reason = f"rc={e.exit_code}"
 
-        # pi writes pacman.html directly via its file tools; check it exists with real content.
+        # pi writes pacman.html directly via its file tools.
+        # Fall back to extracting HTML from the response text if pi outputted it inline.
+        # A non-zero exit (e.g. "Stream ended without finish_reason") is not a failure if
+        # the HTML file was already written before the stream dropped.
         if htmlfile.exists() and htmlfile.stat().st_size > 1024:
-            print(f"\n{G}pacman.html written ({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
+            if status == "BAIL" and reason.startswith("rc="):
+                status = "DONE"
+                reason = "complete"
+            print(f"\n{G}pacman.html written by pi "
+                  f"({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
         else:
-            if status == "DONE":
-                status = "BAIL"
-                reason = "no-html"
-            print(f"\n{R}pacman.html missing or too small after pi run{X}")
+            full_output = "".join(output_lines)
+            # Take the LAST <implementation> block — pi sometimes revises multiple times.
+            impls = re.findall(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
+            if impls:
+                html = _strip_code_fence(impls[-1])
+                if html.lower().startswith("<!doctype") or html.lower().startswith("<html"):
+                    htmlfile.write_text(html)
+                    print(f"\n{Y}pi wrote inline; extracted from <implementation> tags "
+                          f"({len(html):,} bytes) -> {htmlfile}{X}")
+                else:
+                    impls = []  # fall through to bare-HTML search
+
+            if not impls:
+                # Find the last occurrence of <!DOCTYPE html in the output.
+                starts = [m.start() for m in re.finditer(
+                    r"(<!DOCTYPE\s+html|<html[\s>])", full_output, re.IGNORECASE)]
+                if starts:
+                    html = full_output[starts[-1]:]
+                    end = html.lower().rfind("</html>")
+                    if end != -1:
+                        html = _strip_code_fence(html[:end + len("</html>")])
+                    htmlfile.write_text(html)
+                    print(f"\n{Y}pi wrote inline; extracted bare HTML "
+                          f"({len(html):,} bytes) -> {htmlfile}{X}")
+                else:
+                    if status == "DONE":
+                        status = "BAIL"
+                        reason = "no-html"
+                    htmlfile.write_text(full_output)
+                    print(f"\n{R}no HTML found in pi output; saved raw response -> {htmlfile}{X}")
 
         msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
         print(msg, flush=True)
@@ -712,20 +707,27 @@ def cmd_pi_pacman(model):
 
 
 def cmd_hermes_pacman(model):
-    outdir = HERE / "artifacts" / "hermes"
-    outdir.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    outdir = HERE / "artifacts" / "hermes" / ts
+    outdir.mkdir(parents=True, exist_ok=True)
     logfile = outdir / "run.log"
     htmlfile = outdir / "pacman.html"
 
+    # Use explicit --model override, or default to the Fireworks orchestrator.
+    # Passing the lemonade builder model (HERMES_MODEL) without a provider causes hermes
+    # to look it up on Fireworks, which 404s. Let the orchestrator run on Fireworks and
+    # delegate builder tasks to lemonade/Qwen via the delegation config.
+    effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
+
     print(f"== hermes pacman (python library) ==")
-    print(f"   model={model}  out={outdir}\n")
+    print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
 
     output_lines = []
     env = {
         **os.environ,
-        "HERMES_MODEL": model,
+        "HERMES_MODEL": effective_model,
         "HERMES_SYSTEM_PROMPT": PACMAN_SYSTEM_PROMPT,
-        "HERMES_USER_PROMPT": PACMAN_USER_PROMPT,
+        "HERMES_USER_PROMPT": PACMAN_USER_PROMPT_HERMES,
     }
     status = "DONE"
     reason = "complete"
@@ -734,7 +736,7 @@ def cmd_hermes_pacman(model):
         try:
             run = sh.Command(HERMES_PYTHON)(
                 "-c", _PACMAN_SCRIPT,
-                _iter=True, _err_to_out=True, _env=env,
+                _cwd=str(outdir), _iter=True, _err_to_out=True, _env=env,
             )
             for line in run:
                 sys.stdout.write(line)
@@ -747,15 +749,40 @@ def cmd_hermes_pacman(model):
             status = "BAIL"
             reason = f"rc={e.exit_code}"
 
-        full_output = "".join(output_lines)
-        m = re.search(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
-        if m:
-            html = m.group(1).strip()
-            htmlfile.write_text(html)
-            print(f"\n{G}pacman.html written ({len(html):,} bytes) -> {htmlfile}{X}")
+        # The hermes AIAgent writes pacman.html directly via file tools into cwd (outdir).
+        # Fall back to extracting HTML from the text response if the agent didn't write the file.
+        # A non-zero exit before stream end is not a failure if the HTML file was already written.
+        if htmlfile.exists() and htmlfile.stat().st_size > 1024:
+            if status == "BAIL" and reason.startswith("rc="):
+                status = "DONE"
+                reason = "complete"
+            print(f"\n{G}pacman.html written by agent "
+                  f"({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
         else:
-            htmlfile.write_text(full_output)
-            print(f"\n{Y}no <implementation> tags found; saved full response -> {htmlfile}{X}")
+            full_output = "".join(output_lines)
+            m = re.search(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
+            if m:
+                html = m.group(1).strip()
+                htmlfile.write_text(html)
+                print(f"\n{G}pacman.html extracted from <implementation> tags "
+                      f"({len(html):,} bytes) -> {htmlfile}{X}")
+            else:
+                html_start = re.search(r"(<!DOCTYPE\s+html|<html[\s>])", full_output, re.IGNORECASE)
+                if html_start:
+                    html = full_output[html_start.start():].strip()
+                    end = html.lower().rfind("</html>")
+                    if end != -1:
+                        html = html[:end + len("</html>")]
+                    htmlfile.write_text(html)
+                    print(f"\n{Y}no agent file; extracted bare HTML "
+                          f"({len(html):,} bytes) -> {htmlfile}{X}")
+                else:
+                    if status == "DONE":
+                        status = "BAIL"
+                        reason = "no-html"
+                    htmlfile.write_text(full_output)
+                    print(f"\n{R}no agent file, no HTML in response; "
+                          f"saved raw output -> {htmlfile}{X}")
 
         msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
         print(msg, flush=True)
