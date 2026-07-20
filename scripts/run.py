@@ -926,12 +926,13 @@ def cmd_pi_lol(model):
 
     _seed_lol_dir(outdir)
 
-    # Strip /goal prefix — gnhf takes a plain goal string.
-    # System prompt content lives in CLAUDE.md (written by _seed_lol_dir);
-    # gnhf has no --system-prompt flag so CLAUDE.md is the only channel.
+    # Strip /goal prefix — pi has no Ralph-loop slash command.
+    # System prompt is in CLAUDE.md (written by _seed_lol_dir); also passed via
+    # --system-prompt for redundancy. --thinking omitted: extended thinking
+    # tokens exhaust the 131K context window before the build completes.
     user_prompt = LOL_USER_PROMPT.removeprefix("/goal").strip()
 
-    print(f"== pi lol (gnhf) ==")
+    print(f"== pi lol ==")
     print(f"   model={model}  out={outdir}\n")
 
     status = "DONE"
@@ -940,11 +941,9 @@ def cmd_pi_lol(model):
     with logfile.open("w") as f:
         try:
             run = sh.Command(MISE_BIN)(
-                "exec", "node", "--", GNHF_BIN,
-                "--agent", "pi",
-                "--current-branch",
-                "--max-iterations", "200",
-                "--stop-when", "backlog complete",
+                "exec", "node", "--", PI_BIN,
+                "-p", "--model", model,
+                "--system-prompt", LOL_SYSTEM_PROMPT,
                 user_prompt,
                 _cwd=str(outdir), _iter=True,
                 _err_to_out=True, _new_session=True, _bg_exc=False,
