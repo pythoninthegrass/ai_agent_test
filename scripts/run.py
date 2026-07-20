@@ -116,6 +116,7 @@ OPENCODE_BIN        = shutil.which("opencode") or "/home/lance/.opencode/bin/ope
 HERMES_MODEL        = config("HERMES_BUILDER",      default="Ornith-1.0-35B-GGUF-BF16")
 HERMES_ORCHESTRATOR = config("HERMES_ORCHESTRATOR", default="accounts/fireworks/models/minimax-m3")
 HERMES_BIN          = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
+PI_BIN              = shutil.which("pi") or "/home/lance/.local/bin/pi"
 HERMES_PYTHON       = "/home/lance/.hermes/hermes-agent/venv/bin/python"
 STRESS_HOST         = config("STRESS_HOST",         default="http://127.0.0.1:61519")
 STRESS_MODEL        = config("STRESS_MODEL",        default="qwen3-coder-next")
@@ -923,7 +924,7 @@ def cmd_pi_lol(model):
 
     with logfile.open("w") as f:
         try:
-            run = sh.pi(
+            run = sh.Command(PI_BIN)(
                 "-p", "--model", model, "--thinking", "high",
                 "--system-prompt", LOL_SYSTEM_PROMPT,
                 user_prompt,
