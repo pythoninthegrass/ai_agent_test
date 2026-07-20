@@ -908,6 +908,11 @@ def _seed_lol_dir(outdir: Path) -> None:
     else:
         print(result.stdout, end="")
     (outdir / "CLAUDE.md").write_text(LOL_SYSTEM_PROMPT + "\n")
+    # gnhf requires a clean working tree — commit the seed state before handing off.
+    import subprocess as _sp
+    _sp.run(["git", "-C", str(outdir), "add", "-A"], check=True)
+    _sp.run(["git", "-C", str(outdir), "commit", "-m", "chore: seed llmao project scaffold and backlog",
+             "--author", "pythoninthegrass <lance@greyhaven.ai>"], check=True)
 
 
 def cmd_pi_lol(model):
