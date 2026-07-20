@@ -908,6 +908,9 @@ def _seed_lol_dir(outdir: Path) -> None:
     else:
         print(result.stdout, end="")
     (outdir / "CLAUDE.md").write_text(LOL_SYSTEM_PROMPT + "\n")
+    (outdir / ".gitignore").write_text(
+        "node_modules/\n.svelte-kit/\nrun.log\nharness.status\n"
+    )
     # gnhf requires a clean working tree — commit the seed state before handing off.
     import subprocess as _sp
     _sp.run(["git", "-C", str(outdir), "add", "-A"], check=True)
