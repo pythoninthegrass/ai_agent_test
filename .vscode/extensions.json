@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",
+    "codezombiech.gitignore",
+    "DavidAnson.vscode-markdownlint",
+    "eamodio.gitlens",
+    "EditorConfig.EditorConfig",
+    "edwinhuish.better-comments-next",
+    "foxundermoon.shell-format",
+    "mechatroner.rainbow-csv",
+    "ms-python.python",
+    "redhat.ansible",
+    "redhat.vscode-yaml",
+    "ryu1kn.partial-diff",
+    "yzhang.markdown-all-in-one",
+  ]
+}
