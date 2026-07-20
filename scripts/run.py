@@ -86,6 +86,7 @@ import os
 import re
 import shutil
 import sys
+os.environ["PATH"] = "/home/lance/.local/bin:" + os.environ.get("PATH", "")
 import threading
 import uuid
 from datetime import datetime
@@ -116,7 +117,7 @@ OPENCODE_BIN        = shutil.which("opencode") or "/home/lance/.opencode/bin/ope
 HERMES_MODEL        = config("HERMES_BUILDER",      default="Ornith-1.0-35B-GGUF-BF16")
 HERMES_ORCHESTRATOR = config("HERMES_ORCHESTRATOR", default="accounts/fireworks/models/minimax-m3")
 HERMES_BIN          = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
-PI_BIN              = "/home/lance/.local/bin/pi"
+PI_BIN              = shutil.which("pi") or "/home/lance/.local/bin/pi"
 MISE_BIN            = shutil.which("mise") or "/home/lance/.local/bin/mise"
 HERMES_PYTHON       = "/home/lance/.hermes/hermes-agent/venv/bin/python"
 STRESS_HOST         = config("STRESS_HOST",         default="http://127.0.0.1:61519")
