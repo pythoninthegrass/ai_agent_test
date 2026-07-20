@@ -119,6 +119,7 @@ HERMES_ORCHESTRATOR = config("HERMES_ORCHESTRATOR", default="accounts/fireworks/
 HERMES_BIN          = shutil.which("hermes") or "/home/lance/.local/bin/hermes"
 PI_BIN              = shutil.which("pi") or "/home/lance/.local/bin/pi"
 MISE_BIN            = shutil.which("mise") or "/home/lance/.local/bin/mise"
+GNHF_BIN            = shutil.which("gnhf") or "/home/lance/.local/bin/gnhf"
 HERMES_PYTHON       = "/home/lance/.hermes/hermes-agent/venv/bin/python"
 STRESS_HOST         = config("STRESS_HOST",         default="http://127.0.0.1:61519")
 STRESS_MODEL        = config("STRESS_MODEL",        default="qwen3-coder-next")
@@ -182,7 +183,9 @@ LOL_SYSTEM_PROMPT = (
     "criteria, mark Done with `backlog task edit <id> -s Done`, then commit with Conventional "
     "Commits (author pythoninthegrass, NO co-author trailer). Do NOT stop between tasks. "
     "AUTONOMY: never stop for input. Work until the backlog is complete and the portal, lobby, "
-    "and playable MOBA are all reviewable in a browser."
+    "and playable MOBA are all reviewable in a browser. "
+    "CLEANUP: when all tasks are Done, stop any running dev servers or background processes "
+    "before exiting (kill vite, node servers, etc.)."
 )
 
 _lol_spec_raw  = (HERE / ".claude" / "commands" / "lol.md").read_text()
@@ -904,6 +907,7 @@ def _seed_lol_dir(outdir: Path) -> None:
         print(result.stderr or result.stdout)
     else:
         print(result.stdout, end="")
+    (outdir / "CLAUDE.md").write_text(LOL_SYSTEM_PROMPT + "\n")
 
 
 def cmd_pi_lol(model):
@@ -914,11 +918,12 @@ def cmd_pi_lol(model):
 
     _seed_lol_dir(outdir)
 
-    # Strip /goal prefix — pi has no Ralph-loop slash command; the system prompt
-    # carries the operating rules and the task description is the plain goal.
+    # Strip /goal prefix — gnhf takes a plain goal string.
+    # System prompt content lives in CLAUDE.md (written by _seed_lol_dir);
+    # gnhf has no --system-prompt flag so CLAUDE.md is the only channel.
     user_prompt = LOL_USER_PROMPT.removeprefix("/goal").strip()
 
-    print(f"== pi lol ==")
+    print(f"== pi lol (gnhf) ==")
     print(f"   model={model}  out={outdir}\n")
 
     status = "DONE"
@@ -927,9 +932,11 @@ def cmd_pi_lol(model):
     with logfile.open("w") as f:
         try:
             run = sh.Command(MISE_BIN)(
-                "exec", "node", "--", PI_BIN,
-                "-p", "--model", model, "--thinking", "high",
-                "--system-prompt", LOL_SYSTEM_PROMPT,
+                "exec", "node", "--", GNHF_BIN,
+                "--agent", "pi",
+                "--current-branch",
+                "--max-iterations", "200",
+                "--stop-when", "backlog complete",
                 user_prompt,
                 _cwd=str(outdir), _iter=True,
                 _err_to_out=True, _new_session=True, _bg_exc=False,

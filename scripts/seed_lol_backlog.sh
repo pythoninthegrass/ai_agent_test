@@ -133,6 +133,16 @@ $BACKLOG task create "Runes and Masteries: simplified classic pages" \
   --ac "stats from both rune and mastery pages are combined and applied at game start" \
   --plain
 
+$BACKLOG task create "Project cleanup: stop servers and finalize build" \
+  --type chore --priority High \
+  -d "Final task: stop all dev servers and background node processes, verify all tasks are Done, and leave the repo in a clean committed state." \
+  --ac "no vite or node dev-server processes are running" \
+  --ac "all backlog tasks are in Done status" \
+  --ac "git status shows a clean working tree" \
+  --dod "kill any process listening on ports 5173 or 6420 before marking Done" \
+  --plain
+
+
 echo ""
 echo "=== llmao backlog seeded in $TARGET ==="
 $BACKLOG board --plain 2>/dev/null || true
