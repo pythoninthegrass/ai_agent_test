@@ -193,6 +193,8 @@ from run_agent import AIAgent
 
 agent = AIAgent(
     model=os.environ["HERMES_MODEL"],
+    base_url=os.environ["HERMES_BASE_URL"],
+    api_key=os.environ["HERMES_API_KEY"],
     ephemeral_system_prompt=os.environ["HERMES_SYSTEM_PROMPT"],
     quiet_mode=True,
     skip_memory=True,
@@ -963,6 +965,16 @@ def cmd_hermes_lol(model):
     env = {
         **os.environ,
         "HERMES_MODEL": effective_model,
+        "HERMES_BASE_URL": (
+            "https://api.fireworks.ai/inference/v1"
+            if "fireworks" in effective_model
+            else "http://127.0.0.1:13305/api/v1"
+        ),
+        "HERMES_API_KEY": (
+            os.environ.get("FIREWORKS_API_KEY", "")
+            if "fireworks" in effective_model
+            else os.environ.get("LEMONADE_API_KEY", "lemonade")
+        ),
         "HERMES_SYSTEM_PROMPT": LOL_SYSTEM_PROMPT,
         "HERMES_USER_PROMPT": LOL_USER_PROMPT_HERMES,
     }
