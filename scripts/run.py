@@ -81,22 +81,22 @@ them, keeping context bounded while the shared session preserves continuity.
 """
 
 import argparse
+import docker
 import json
 import os
 import re
+import sh
 import shutil
 import sys
-os.environ["PATH"] = "/home/lance/.local/bin:" + os.environ.get("PATH", "")
 import threading
 import uuid
 from datetime import datetime
-from pathlib import Path
-
-import docker
-import sh
 from decouple import config
 from git import Repo
+from pathlib import Path
 from sh import ErrorReturnCode
+
+os.environ["PATH"] = "/home/lance/.local/bin:" + os.environ.get("PATH", "")
 
 HERE = Path(__file__).resolve().parent.parent
 BUILD = HERE / "build"
@@ -583,7 +583,7 @@ def cmd_milestones_hermes(match, tail, warn_at, model, total, max_steps, max_sta
     print(f"   model={model}  target={total} milestones")
     cap = f"{step_timeout}s" if step_timeout else "disabled"
     print(f"   step-timeout={cap}  tee -> {logfile}")
-    print(f"   NOTE: hermes server must be running before starting this loop\n")
+    print("   NOTE: hermes server must be running before starting this loop\n")
 
     done = milestone_count(repo)
     stalls = 0
@@ -682,7 +682,7 @@ def cmd_pi_pacman(model):
     logfile = outdir / "run.log"
     htmlfile = outdir / "pacman.html"
 
-    print(f"== pi pacman ==")
+    print("== pi pacman ==")
     print(f"   model={model}  out={outdir}\n")
 
     output_lines = []
@@ -772,7 +772,7 @@ def cmd_hermes_pacman(model):
     # delegate builder tasks to lemonade/Qwen via the delegation config.
     effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
 
-    print(f"== hermes pacman (python library) ==")
+    print("== hermes pacman (python library) ==")
     print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
 
     output_lines = []
@@ -852,7 +852,7 @@ def cmd_stress(match, tail, warn_at, host, model, api_key, users, rate, duration
     csv_prefix = str(outdir / "stress")
     locustfile = HERE / "locustfile.py"
 
-    print(f"== locust stress run ==")
+    print("== locust stress run ==")
     print(f"   host={host}  model={model}  users={users}  rate={rate}  duration={duration}")
     print(f"   tee -> {logfile}\n")
 
@@ -932,7 +932,7 @@ def cmd_pi_lol(model):
     # tokens exhaust the 131K context window before the build completes.
     user_prompt = LOL_USER_PROMPT.removeprefix("/goal").strip()
 
-    print(f"== pi lol ==")
+    print("== pi lol ==")
     print(f"   model={model}  out={outdir}\n")
 
     status = "DONE"
@@ -979,7 +979,7 @@ def cmd_hermes_lol(model):
     effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
     provider = "fireworks" if "fireworks" in effective_model else "lemonade"
 
-    print(f"== hermes lol ==")
+    print("== hermes lol ==")
     print(f"   orchestrator={effective_model}  provider={provider}  out={outdir}\n")
 
     # No --system-prompt flag in hermes chat; prepend to the query instead.
