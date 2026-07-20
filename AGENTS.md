@@ -20,6 +20,10 @@ Scripts live in `scripts/` and are abstracted by `taskfile.yml`. `scripts/run.py
 | `task run -- observe` | `./scripts/run.py observe` | stream Docker logs for CtxLimit signals |
 | `task run -- stress` | `./scripts/run.py stress` | 8 users, ramp 2/s, 5m |
 | `task run -- stress --duration 30s --users 2` | `./scripts/run.py stress --duration 30s --users 2` | smoke-test |
+| `task run -- pi-pacman` | `./scripts/run.py pi-pacman` | one-shot `pacman.html` via pi |
+| `task run -- pacman` | `./scripts/run.py pacman` | one-shot `pacman.html` via hermes |
+| `task run -- pi-lol` | `./scripts/run.py pi-lol` | one-shot llmao MOBA build via pi |
+| `task run -- lol` | `./scripts/run.py lol` | one-shot llmao MOBA build via hermes |
 | `task run-all` | `./scripts/run-all-vllm.sh` | all three agents sequentially |
 | `task run-all -- pi` | `./scripts/run-all-vllm.sh pi` | single agent |
 | `task run-all -- opencode hermes` | `./scripts/run-all-vllm.sh opencode hermes` | two agents, in order |
@@ -61,6 +65,20 @@ Waits for vLLM health on `:61515`, then calls the selected agent commands in seq
 ### `scripts/locustfile.py` — synthetic agentic load test
 
 Locust file that simulates concurrent coding-agent traffic against the `:61519` proxy: a fixed system prompt + tool block (exercises prefix caching), multi-turn conversations with growing context, and synthetic tool-call/tool-result turns appended each iteration. This is *complementary* to the milestone harness — it generates realistic traffic shape without actually solving the coding task. `task run -- stress` starts the Docker `CtxLimit` observers before launching Locust headless, so context-shift signals appear alongside Locust's per-request stats. Artifacts land in `build-locust-vllm/`.
+
+### One-shot commands (`pi-pacman`, `pacman`, `pi-lol`, `lol`)
+
+Unlike the milestone loop, these run a single agent invocation against a fixed prompt and produce one artifact — no `TASK.md`, no per-step stall/bail bookkeeping.
+
+- `pi-pacman` / `pacman` — generate `pacman.html` (single-file, dependency-free) via `pi` or `hermes` respectively. Scored against the reference in `pacman.html` (see below).
+- `pi-lol` / `lol` — autonomously build **llmao**, a clean-room MOBA (SvelteKit + PixiJS), from a seeded Backlog.md board, via `pi` or `hermes` respectively.
+
+Dispatch lives in `scripts/run.py`:
+
+- `_prompt_config(prompt, ts) -> PromptConfig` — a `match` on `"pacman"` / `"lol"` that returns the prompt-specific system/user prompts, output-dir name, an optional `setup` hook (`_seed_lol_dir`, lol only — git-inits the outdir and seeds its Backlog.md board), and an optional `postprocess` hook (`_pacman_postprocess`, pacman only — confirms `pacman.html` was written, else salvages HTML out of the raw response).
+- `cmd_pi(prompt, model)` / `cmd_hermes(prompt, model)` — agent-generic entry points, one per agent, used by all four CLI commands. Agent-specific invocation details live in `PromptConfig.pi_kwargs` / `PromptConfig.hermes_kwargs` rather than in separate functions: `pi_kwargs` carries `thinking` level and whether the call needs `mise`-wrapping (lol only, for its managed node runtime); `hermes_kwargs` carries `mode` (`"library"` — the `AIAgent` Python class, used for pacman — vs `"cli"` — the `hermes chat` binary, used for lol because the Python library ignores `base_url` and can't do provider routing) and `max_turns`.
+
+Artifacts land in `artifacts/{pi,hermes}/<ts>/` (pacman) or `artifacts/{pi,hermes}/lol-<ts>/` (lol), each with `run.log` and `harness.status`; pacman runs also get `pacman.html`, lol runs also get a seeded project (Backlog.md board + `CLAUDE.md` system prompt) committed as the initial commit.
 
 ## Key constants (in `scripts/run.py`)
 

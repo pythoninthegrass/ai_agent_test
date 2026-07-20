@@ -90,6 +90,7 @@ import shutil
 import sys
 import threading
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from decouple import config
 from git import Repo
@@ -185,7 +186,18 @@ LOL_SYSTEM_PROMPT = (
     "AUTONOMY: never stop for input. Work until the backlog is complete and the portal, lobby, "
     "and playable MOBA are all reviewable in a browser. "
     "CLEANUP: when all tasks are Done, stop any running dev servers or background processes "
-    "before exiting (kill vite, node servers, etc.)."
+    "before exiting (kill vite, node servers, etc.). "
+    "KNOWN PITFALLS from prior runs — watch for these classes of bug, don't just copy the fix: "
+    "(1) after scaffolding and after any change under src/routes, run `npm run prepare` "
+    "(svelte-kit sync) so generated types/routes exist before you trust type errors or a blank "
+    "page; (2) PixiJS Application.init() is async and must complete before anything touches "
+    "app.ticker/app.stage — a start() that skips awaiting init() fails silently with 'ticker is "
+    "undefined'; (3) resizeTo must target a wrapping container, not the canvas element itself, "
+    "or the canvas locks to Pixi's 800x600 default; (4) in Svelte 5 runes mode, any variable "
+    "mutated after mount that a template or $effect reads (including plain flags like a mounted "
+    "boolean) needs $state(), or the DOM never updates; (5) the in-game canvas needs "
+    "oncontextmenu preventDefault so right-click can be used as a real game control instead of "
+    "opening the browser menu."
 )
 
 _lol_spec_raw  = (HERE / ".claude" / "commands" / "lol.md").read_text()
@@ -675,29 +687,140 @@ def _strip_code_fence(s: str) -> str:
     return s.strip()
 
 
-def cmd_pi_pacman(model):
+def _pacman_postprocess(outdir, output_lines, status, reason, written_by):
+    """Confirm pacman.html was written by the agent, else salvage it from the response text.
+
+    Shared by both pi and hermes: the agent normally writes pacman.html directly via its
+    file tools. A non-zero exit (e.g. "Stream ended without finish_reason") is not itself a
+    failure if the file was already written before the stream dropped.
+    """
+    htmlfile = outdir / "pacman.html"
+    if htmlfile.exists() and htmlfile.stat().st_size > 1024:
+        if status == "BAIL" and reason.startswith("rc="):
+            status, reason = "DONE", "complete"
+        print(f"\n{G}pacman.html written by {written_by} "
+              f"({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
+    else:
+        full_output = "".join(output_lines)
+        # Take the LAST <implementation> block — the agent sometimes revises multiple times.
+        impls = re.findall(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
+        html = None
+        if impls:
+            candidate = _strip_code_fence(impls[-1])
+            if candidate.lower().startswith("<!doctype") or candidate.lower().startswith("<html"):
+                html = candidate
+                htmlfile.write_text(html)
+                print(f"\n{Y}{written_by} wrote inline; extracted from <implementation> tags "
+                      f"({len(html):,} bytes) -> {htmlfile}{X}")
+
+        if html is None:
+            # Find the last occurrence of <!DOCTYPE html in the output.
+            starts = [m.start() for m in re.finditer(
+                r"(<!DOCTYPE\s+html|<html[\s>])", full_output, re.IGNORECASE)]
+            if starts:
+                html = full_output[starts[-1]:]
+                end = html.lower().rfind("</html>")
+                if end != -1:
+                    html = _strip_code_fence(html[:end + len("</html>")])
+                htmlfile.write_text(html)
+                print(f"\n{Y}{written_by} wrote inline; extracted bare HTML "
+                      f"({len(html):,} bytes) -> {htmlfile}{X}")
+            else:
+                if status == "DONE":
+                    status, reason = "BAIL", "no-html"
+                htmlfile.write_text(full_output)
+                print(f"\n{R}no HTML found in {written_by} output; "
+                      f"saved raw response -> {htmlfile}{X}")
+
+    msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
+    return status, reason, msg
+
+
+@dataclass
+class PromptConfig:
+    """Per-prompt (pacman/lol) knobs shared across whichever agent invokes them."""
+    outdir_name: str
+    setup: object            # Callable[[Path], None] | None — extra outdir prep (e.g. seed backlog)
+    pi_system_prompt: str
+    pi_user_prompt: str
+    pi_kwargs: dict          # pi-specific invocation knobs: thinking level, mise wrapping
+    hermes_system_prompt: str
+    hermes_user_prompt: str
+    hermes_kwargs: dict      # hermes-specific invocation knobs: library vs CLI mode, max-turns
+    postprocess: object      # Callable[[Path, list, str, str, str], tuple[str, str, str]] | None
+
+
+def _prompt_config(prompt: str, ts: str) -> PromptConfig:
+    match prompt:
+        case "pacman":
+            return PromptConfig(
+                outdir_name=ts,
+                setup=None,
+                pi_system_prompt=PACMAN_SYSTEM_PROMPT,
+                pi_user_prompt=PACMAN_USER_PROMPT,
+                pi_kwargs={"thinking": "high"},
+                hermes_system_prompt=PACMAN_SYSTEM_PROMPT,
+                hermes_user_prompt=PACMAN_USER_PROMPT_HERMES,
+                # AIAgent Python library is fine here — pacman doesn't need provider routing.
+                hermes_kwargs={"mode": "library"},
+                postprocess=_pacman_postprocess,
+            )
+        case "lol":
+            return PromptConfig(
+                outdir_name=f"lol-{ts}",
+                setup=_seed_lol_dir,
+                pi_system_prompt=LOL_SYSTEM_PROMPT,
+                # Strip /goal prefix — pi has no Ralph-loop slash command.
+                pi_user_prompt=LOL_USER_PROMPT.removeprefix("/goal").strip(),
+                # --thinking omitted: extended thinking tokens exhaust the 131K context
+                # window before the build completes. use_mise: pi needs the mise-managed
+                # node runtime here, unlike the pacman one-shot which runs pi off PATH.
+                pi_kwargs={"use_mise": True},
+                hermes_system_prompt=LOL_SYSTEM_PROMPT,
+                hermes_user_prompt=LOL_USER_PROMPT_HERMES,
+                # CLI, not the AIAgent Python library: the library ignores base_url in
+                # favour of ~/.hermes/config.yaml, so provider routing (fireworks vs
+                # lemonade) only works via the CLI flag.
+                hermes_kwargs={"mode": "cli", "max_turns": 200},
+                postprocess=None,
+            )
+        case _:
+            raise ValueError(f"unknown prompt {prompt!r}")
+
+
+def cmd_pi(prompt: str, model: str) -> int:
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    outdir = HERE / "artifacts" / "pi" / ts
+    cfg = _prompt_config(prompt, ts)
+    outdir = HERE / "artifacts" / "pi" / cfg.outdir_name
     outdir.mkdir(parents=True, exist_ok=True)
     logfile = outdir / "run.log"
-    htmlfile = outdir / "pacman.html"
+    if cfg.setup:
+        cfg.setup(outdir)
 
-    print("== pi pacman ==")
+    print(f"== pi {prompt} ==")
     print(f"   model={model}  out={outdir}\n")
 
+    argv = ["-p", "--model", model]
+    if "thinking" in cfg.pi_kwargs:
+        argv += ["--thinking", cfg.pi_kwargs["thinking"]]
+    argv += ["--system-prompt", cfg.pi_system_prompt, cfg.pi_user_prompt]
+
     output_lines = []
-    status = "DONE"
-    reason = "complete"
+    status, reason = "DONE", "complete"
 
     with logfile.open("w") as f:
         try:
-            run = sh.pi(
-                "-p", "--model", model, "--thinking", "high",
-                "--system-prompt", PACMAN_SYSTEM_PROMPT,
-                PACMAN_USER_PROMPT,
-                _cwd=str(outdir), _iter=True,
-                _err_to_out=True, _new_session=True, _bg_exc=False,
-            )
+            if cfg.pi_kwargs.get("use_mise"):
+                run = sh.Command(MISE_BIN)(
+                    "exec", "node", "--", PI_BIN, *argv,
+                    _cwd=str(outdir), _iter=True,
+                    _err_to_out=True, _new_session=True, _bg_exc=False,
+                )
+            else:
+                run = sh.pi(
+                    *argv, _cwd=str(outdir), _iter=True,
+                    _err_to_out=True, _new_session=True, _bg_exc=False,
+                )
             for line in run:
                 sys.stdout.write(line)
                 sys.stdout.flush()
@@ -705,53 +828,13 @@ def cmd_pi_pacman(model):
                 f.flush()
                 output_lines.append(line)
         except ErrorReturnCode as e:
-            print(f"{R}pi pacman exited non-zero ({e.exit_code}){X}", file=sys.stderr)
-            status = "BAIL"
-            reason = f"rc={e.exit_code}"
+            print(f"{R}pi {prompt} exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status, reason = "BAIL", f"rc={e.exit_code}"
 
-        # pi writes pacman.html directly via its file tools.
-        # Fall back to extracting HTML from the response text if pi outputted it inline.
-        # A non-zero exit (e.g. "Stream ended without finish_reason") is not a failure if
-        # the HTML file was already written before the stream dropped.
-        if htmlfile.exists() and htmlfile.stat().st_size > 1024:
-            if status == "BAIL" and reason.startswith("rc="):
-                status = "DONE"
-                reason = "complete"
-            print(f"\n{G}pacman.html written by pi "
-                  f"({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
+        if cfg.postprocess:
+            status, reason, msg = cfg.postprocess(outdir, output_lines, status, reason, "pi")
         else:
-            full_output = "".join(output_lines)
-            # Take the LAST <implementation> block — pi sometimes revises multiple times.
-            impls = re.findall(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
-            if impls:
-                html = _strip_code_fence(impls[-1])
-                if html.lower().startswith("<!doctype") or html.lower().startswith("<html"):
-                    htmlfile.write_text(html)
-                    print(f"\n{Y}pi wrote inline; extracted from <implementation> tags "
-                          f"({len(html):,} bytes) -> {htmlfile}{X}")
-                else:
-                    impls = []  # fall through to bare-HTML search
-
-            if not impls:
-                # Find the last occurrence of <!DOCTYPE html in the output.
-                starts = [m.start() for m in re.finditer(
-                    r"(<!DOCTYPE\s+html|<html[\s>])", full_output, re.IGNORECASE)]
-                if starts:
-                    html = full_output[starts[-1]:]
-                    end = html.lower().rfind("</html>")
-                    if end != -1:
-                        html = _strip_code_fence(html[:end + len("</html>")])
-                    htmlfile.write_text(html)
-                    print(f"\n{Y}pi wrote inline; extracted bare HTML "
-                          f"({len(html):,} bytes) -> {htmlfile}{X}")
-                else:
-                    if status == "DONE":
-                        status = "BAIL"
-                        reason = "no-html"
-                    htmlfile.write_text(full_output)
-                    print(f"\n{R}no HTML found in pi output; saved raw response -> {htmlfile}{X}")
-
-        msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
+            msg = f"=== HARNESS:{status} reason={reason} ==="
         print(msg, flush=True)
         f.write(msg + "\n")
 
@@ -759,38 +842,59 @@ def cmd_pi_pacman(model):
     return 0 if status == "DONE" else 1
 
 
-def cmd_hermes_pacman(model):
+def cmd_hermes(prompt: str, model: str) -> int:
     ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    outdir = HERE / "artifacts" / "hermes" / ts
+    cfg = _prompt_config(prompt, ts)
+    outdir = HERE / "artifacts" / "hermes" / cfg.outdir_name
     outdir.mkdir(parents=True, exist_ok=True)
     logfile = outdir / "run.log"
-    htmlfile = outdir / "pacman.html"
+    if cfg.setup:
+        cfg.setup(outdir)
 
-    # Use explicit --model override, or default to the Fireworks orchestrator.
-    # Passing the lemonade builder model (HERMES_MODEL) without a provider causes hermes
-    # to look it up on Fireworks, which 404s. Let the orchestrator run on Fireworks and
-    # delegate builder tasks to lemonade/Qwen via the delegation config.
+    # Use explicit --model override, or default to the Fireworks orchestrator. Passing the
+    # lemonade builder model (HERMES_MODEL) without a provider causes hermes to look it up
+    # on Fireworks, which 404s. Let the orchestrator run on Fireworks and delegate builder
+    # tasks to lemonade/Qwen via the delegation config.
     effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
 
-    print("== hermes pacman (python library) ==")
-    print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
-
     output_lines = []
-    env = {
-        **os.environ,
-        "HERMES_MODEL": effective_model,
-        "HERMES_SYSTEM_PROMPT": PACMAN_SYSTEM_PROMPT,
-        "HERMES_USER_PROMPT": PACMAN_USER_PROMPT_HERMES,
-    }
-    status = "DONE"
-    reason = "complete"
+    status, reason = "DONE", "complete"
 
     with logfile.open("w") as f:
         try:
-            run = sh.Command(HERMES_PYTHON)(
-                "-c", _PACMAN_SCRIPT,
-                _cwd=str(outdir), _iter=True, _err_to_out=True, _env=env,
-            )
+            match cfg.hermes_kwargs["mode"]:
+                case "library":
+                    print(f"== hermes {prompt} (python library) ==")
+                    print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
+                    env = {
+                        **os.environ,
+                        "HERMES_MODEL": effective_model,
+                        "HERMES_SYSTEM_PROMPT": cfg.hermes_system_prompt,
+                        "HERMES_USER_PROMPT": cfg.hermes_user_prompt,
+                    }
+                    run = sh.Command(HERMES_PYTHON)(
+                        "-c", _PACMAN_SCRIPT,
+                        _cwd=str(outdir), _iter=True, _err_to_out=True, _env=env,
+                    )
+                case "cli":
+                    provider = "fireworks" if "fireworks" in effective_model else "lemonade"
+                    print(f"== hermes {prompt} ==")
+                    print(f"   orchestrator={effective_model}  provider={provider}  out={outdir}\n")
+                    # No --system-prompt flag in hermes chat; prepend to the query instead.
+                    query = cfg.hermes_system_prompt + "\n\n" + cfg.hermes_user_prompt
+                    run = sh.Command(HERMES_BIN)(
+                        "chat", "-q", query,
+                        "--model", effective_model,
+                        "--provider", provider,
+                        "--yolo", "-Q",
+                        "--max-turns", str(cfg.hermes_kwargs.get("max_turns", 200)),
+                        "--accept-hooks",
+                        _cwd=str(outdir), _iter=True,
+                        _err_to_out=True, _new_session=True, _bg_exc=False,
+                    )
+                case mode:
+                    raise ValueError(f"unknown hermes mode {mode!r}")
+
             for line in run:
                 sys.stdout.write(line)
                 sys.stdout.flush()
@@ -798,46 +902,13 @@ def cmd_hermes_pacman(model):
                 f.flush()
                 output_lines.append(line)
         except ErrorReturnCode as e:
-            print(f"{R}hermes pacman exited non-zero ({e.exit_code}){X}", file=sys.stderr)
-            status = "BAIL"
-            reason = f"rc={e.exit_code}"
+            print(f"{R}hermes {prompt} exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status, reason = "BAIL", f"rc={e.exit_code}"
 
-        # The hermes AIAgent writes pacman.html directly via file tools into cwd (outdir).
-        # Fall back to extracting HTML from the text response if the agent didn't write the file.
-        # A non-zero exit before stream end is not a failure if the HTML file was already written.
-        if htmlfile.exists() and htmlfile.stat().st_size > 1024:
-            if status == "BAIL" and reason.startswith("rc="):
-                status = "DONE"
-                reason = "complete"
-            print(f"\n{G}pacman.html written by agent "
-                  f"({htmlfile.stat().st_size:,} bytes) -> {htmlfile}{X}")
+        if cfg.postprocess:
+            status, reason, msg = cfg.postprocess(outdir, output_lines, status, reason, "agent")
         else:
-            full_output = "".join(output_lines)
-            m = re.search(r"<implementation>(.*?)</implementation>", full_output, re.DOTALL)
-            if m:
-                html = m.group(1).strip()
-                htmlfile.write_text(html)
-                print(f"\n{G}pacman.html extracted from <implementation> tags "
-                      f"({len(html):,} bytes) -> {htmlfile}{X}")
-            else:
-                html_start = re.search(r"(<!DOCTYPE\s+html|<html[\s>])", full_output, re.IGNORECASE)
-                if html_start:
-                    html = full_output[html_start.start():].strip()
-                    end = html.lower().rfind("</html>")
-                    if end != -1:
-                        html = html[:end + len("</html>")]
-                    htmlfile.write_text(html)
-                    print(f"\n{Y}no agent file; extracted bare HTML "
-                          f"({len(html):,} bytes) -> {htmlfile}{X}")
-                else:
-                    if status == "DONE":
-                        status = "BAIL"
-                        reason = "no-html"
-                    htmlfile.write_text(full_output)
-                    print(f"\n{R}no agent file, no HTML in response; "
-                          f"saved raw output -> {htmlfile}{X}")
-
-        msg = f"=== HARNESS:{status} reason={reason} html={htmlfile.name} ==="
+            msg = f"=== HARNESS:{status} reason={reason} ==="
         print(msg, flush=True)
         f.write(msg + "\n")
 
@@ -918,106 +989,6 @@ def _seed_lol_dir(outdir: Path) -> None:
              "--author", "pythoninthegrass <lance@greyhaven.ai>"], check=True)
 
 
-def cmd_pi_lol(model):
-    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    outdir = HERE / "artifacts" / "pi" / f"lol-{ts}"
-    outdir.mkdir(parents=True, exist_ok=True)
-    logfile = outdir / "run.log"
-
-    _seed_lol_dir(outdir)
-
-    # Strip /goal prefix — pi has no Ralph-loop slash command.
-    # System prompt is in CLAUDE.md (written by _seed_lol_dir); also passed via
-    # --system-prompt for redundancy. --thinking omitted: extended thinking
-    # tokens exhaust the 131K context window before the build completes.
-    user_prompt = LOL_USER_PROMPT.removeprefix("/goal").strip()
-
-    print("== pi lol ==")
-    print(f"   model={model}  out={outdir}\n")
-
-    status = "DONE"
-    reason = "complete"
-
-    with logfile.open("w") as f:
-        try:
-            run = sh.Command(MISE_BIN)(
-                "exec", "node", "--", PI_BIN,
-                "-p", "--model", model,
-                "--system-prompt", LOL_SYSTEM_PROMPT,
-                user_prompt,
-                _cwd=str(outdir), _iter=True,
-                _err_to_out=True, _new_session=True, _bg_exc=False,
-            )
-            for line in run:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                f.write(line)
-                f.flush()
-        except ErrorReturnCode as e:
-            print(f"{R}pi lol exited non-zero ({e.exit_code}){X}", file=sys.stderr)
-            status = "BAIL"
-            reason = f"rc={e.exit_code}"
-
-        msg = f"=== HARNESS:{status} reason={reason} ==="
-        print(msg, flush=True)
-        f.write(msg + "\n")
-
-    (outdir / "harness.status").write_text(msg + "\n")
-    return 0 if status == "DONE" else 1
-
-
-def cmd_hermes_lol(model):
-    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    outdir = HERE / "artifacts" / "hermes" / f"lol-{ts}"
-    outdir.mkdir(parents=True, exist_ok=True)
-    logfile = outdir / "run.log"
-
-    _seed_lol_dir(outdir)
-
-    # Use hermes CLI directly — AIAgent Python library ignores base_url in favour
-    # of ~/.hermes/config.yaml, so provider routing only works via the CLI flag.
-    effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
-    provider = "fireworks" if "fireworks" in effective_model else "lemonade"
-
-    print("== hermes lol ==")
-    print(f"   orchestrator={effective_model}  provider={provider}  out={outdir}\n")
-
-    # No --system-prompt flag in hermes chat; prepend to the query instead.
-    query = LOL_SYSTEM_PROMPT + "\n\n" + LOL_USER_PROMPT_HERMES
-
-    status = "DONE"
-    reason = "complete"
-
-    with logfile.open("w") as f:
-        try:
-            run = sh.Command(HERMES_BIN)(
-                "chat",
-                "-q", query,
-                "--model", effective_model,
-                "--provider", provider,
-                "--yolo", "-Q",
-                "--max-turns", "200",
-                "--accept-hooks",
-                _cwd=str(outdir), _iter=True,
-                _err_to_out=True, _new_session=True, _bg_exc=False,
-            )
-            for line in run:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                f.write(line)
-                f.flush()
-        except ErrorReturnCode as e:
-            print(f"{R}hermes lol exited non-zero ({e.exit_code}){X}", file=sys.stderr)
-            status = "BAIL"
-            reason = f"rc={e.exit_code}"
-
-        msg = f"=== HARNESS:{status} reason={reason} ==="
-        print(msg, flush=True)
-        f.write(msg + "\n")
-
-    (outdir / "harness.status").write_text(msg + "\n")
-    return 0 if status == "DONE" else 1
-
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("cmd", nargs="?", default="help",
@@ -1062,15 +1033,15 @@ def main() -> int:
                                          args.total, args.max_steps, args.max_stalls,
                                          args.step_timeout)
         case "pi-pacman":
-            return cmd_pi_pacman(args.model)
+            return cmd_pi("pacman", args.model)
         case "pacman":
             model = args.model if args.model != SESSION_MODEL else HERMES_MODEL
-            return cmd_hermes_pacman(model)
+            return cmd_hermes("pacman", model)
         case "pi-lol":
-            return cmd_pi_lol(args.model)
+            return cmd_pi("lol", args.model)
         case "lol":
             model = args.model if args.model != SESSION_MODEL else HERMES_MODEL
-            return cmd_hermes_lol(model)
+            return cmd_hermes("lol", model)
         case "stress":
             model = args.model if args.model != SESSION_MODEL else STRESS_MODEL
             return cmd_stress(args.match, tail, args.warn_at, args.host, model,
