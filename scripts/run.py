@@ -956,36 +956,32 @@ def cmd_hermes_lol(model):
 
     _seed_lol_dir(outdir)
 
-    # Delegate builder tasks to lemonade/Qwen via hermes delegation config.
+    # Use hermes CLI directly — AIAgent Python library ignores base_url in favour
+    # of ~/.hermes/config.yaml, so provider routing only works via the CLI flag.
     effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
+    provider = "fireworks" if "fireworks" in effective_model else "lemonade"
 
     print(f"== hermes lol ==")
-    print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
+    print(f"   orchestrator={effective_model}  provider={provider}  out={outdir}\n")
 
-    env = {
-        **os.environ,
-        "HERMES_MODEL": effective_model,
-        "HERMES_BASE_URL": (
-            "https://api.fireworks.ai/inference/v1"
-            if "fireworks" in effective_model
-            else "http://127.0.0.1:13305/api/v1"
-        ),
-        "HERMES_API_KEY": (
-            os.environ.get("FIREWORKS_API_KEY", "")
-            if "fireworks" in effective_model
-            else os.environ.get("LEMONADE_API_KEY", "lemonade")
-        ),
-        "HERMES_SYSTEM_PROMPT": LOL_SYSTEM_PROMPT,
-        "HERMES_USER_PROMPT": LOL_USER_PROMPT_HERMES,
-    }
+    # No --system-prompt flag in hermes chat; prepend to the query instead.
+    query = LOL_SYSTEM_PROMPT + "\n\n" + LOL_USER_PROMPT_HERMES
+
     status = "DONE"
     reason = "complete"
 
     with logfile.open("w") as f:
         try:
-            run = sh.Command(HERMES_PYTHON)(
-                "-c", _LOL_SCRIPT,
-                _cwd=str(outdir), _iter=True, _err_to_out=True, _env=env,
+            run = sh.Command(HERMES_BIN)(
+                "chat",
+                "-q", query,
+                "--model", effective_model,
+                "--provider", provider,
+                "--yolo", "-Q",
+                "--max-turns", "200",
+                "--accept-hooks",
+                _cwd=str(outdir), _iter=True,
+                _err_to_out=True, _new_session=True, _bg_exc=False,
             )
             for line in run:
                 sys.stdout.write(line)
