@@ -158,6 +158,51 @@ response = agent.chat(os.environ["HERMES_USER_PROMPT"])
 print(response)
 """
 
+LOL_SYSTEM_PROMPT = (
+    "You are an expert game designer and full-stack developer building a clean-room MOBA "
+    "called llmao. "
+    "CLEAN-ROOM: do not use any Riot Games assets, code, champion names, item names, or lore. "
+    "Create original analogues (a 'temu version') — re-themed characters, items, and map "
+    "with original names. "
+    "STACK: SvelteKit shell + PixiJS renderer. The game world MUST run in a PixiJS/WebGL render "
+    "loop (do NOT render game entities through Svelte components). SvelteKit handles the portal, "
+    "lobby, room-join UI, and item shop; PixiJS handles the in-game canvas. For multiplayer, "
+    "use an authoritative WebSocket server — host creates room, others join by room code. "
+    "DOMAIN: model the game after the 2009-2013 / Season 3 'greatest hits' era — slower "
+    "deliberate combat with sharper champion strengths/weaknesses; 5 roles (top, jungle, mid, "
+    "ADC, support); 3-lane map with a jungle (three camp types: shade-wraiths, pack-wolves, "
+    "stone-golems); baron/dragon objective pits; simplified rune/mastery page; classic item "
+    "archetypes (crit+tank synergy, huge-HP, HP+slow, armor-shred, attack-speed+crit, "
+    "gold-generation). "
+    "BACKLOG: read and work from the Backlog.md board in this repo (.backlog/tasks/). "
+    "Process tasks in priority order: read the task file, implement it, verify acceptance "
+    "criteria, mark Done with `backlog task edit <id> -s Done`, then commit with Conventional "
+    "Commits (author pythoninthegrass, NO co-author trailer). Do NOT stop between tasks. "
+    "AUTONOMY: never stop for input. Work until the backlog is complete and the portal, lobby, "
+    "and playable MOBA are all reviewable in a browser."
+)
+
+_lol_spec_raw  = (HERE / ".claude" / "commands" / "lol.md").read_text()
+_lol_spec_body = re.sub(r"^---.*?---\s*", "", _lol_spec_raw, flags=re.DOTALL).strip()
+LOL_USER_PROMPT        = _lol_spec_body   # starts with /goal
+LOL_USER_PROMPT_HERMES = _lol_spec_body   # hermes consumes /goal natively
+
+_LOL_SCRIPT = """\
+import os, sys
+from run_agent import AIAgent
+
+agent = AIAgent(
+    model=os.environ["HERMES_MODEL"],
+    ephemeral_system_prompt=os.environ["HERMES_SYSTEM_PROMPT"],
+    quiet_mode=True,
+    skip_memory=True,
+    save_trajectories=False,
+)
+response = agent.chat(os.environ["HERMES_USER_PROMPT"])
+print(response)
+"""
+
+
 CTX = re.compile(r"CtxLimit:(\d+)/(\d+)")
 # Real runtime shift events only — NOT the "SmartCache will be enabled" startup banner.
 SHIFT = re.compile(r"Context Shift|ContextShift|Erased \d+ tokens|Trimming|context-shift", re.I)
@@ -840,11 +885,119 @@ def cmd_stress(match, tail, warn_at, host, model, api_key, users, rate, duration
     return 0 if status == "DONE" else 1
 
 
+
+def _seed_lol_dir(outdir: Path) -> None:
+    """Git-init and seed the Backlog.md board in outdir via the seed script."""
+    import subprocess
+    seed_script = HERE / "scripts" / "seed_lol_backlog.sh"
+    result = subprocess.run(
+        ["bash", str(seed_script), str(outdir)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        print(f"{Y}seed_lol_backlog.sh exited {result.returncode}:{X}")
+        print(result.stderr or result.stdout)
+    else:
+        print(result.stdout, end="")
+
+
+def cmd_pi_lol(model):
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    outdir = HERE / "artifacts" / "pi" / f"lol-{ts}"
+    outdir.mkdir(parents=True, exist_ok=True)
+    logfile = outdir / "run.log"
+
+    _seed_lol_dir(outdir)
+
+    # Strip /goal prefix — pi has no Ralph-loop slash command; the system prompt
+    # carries the operating rules and the task description is the plain goal.
+    user_prompt = LOL_USER_PROMPT.removeprefix("/goal").strip()
+
+    print(f"== pi lol ==")
+    print(f"   model={model}  out={outdir}\n")
+
+    status = "DONE"
+    reason = "complete"
+
+    with logfile.open("w") as f:
+        try:
+            run = sh.pi(
+                "-p", "--model", model, "--thinking", "high",
+                "--system-prompt", LOL_SYSTEM_PROMPT,
+                user_prompt,
+                _cwd=str(outdir), _iter=True,
+                _err_to_out=True, _new_session=True, _bg_exc=False,
+            )
+            for line in run:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                f.write(line)
+                f.flush()
+        except ErrorReturnCode as e:
+            print(f"{R}pi lol exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status = "BAIL"
+            reason = f"rc={e.exit_code}"
+
+        msg = f"=== HARNESS:{status} reason={reason} ==="
+        print(msg, flush=True)
+        f.write(msg + "\n")
+
+    (outdir / "harness.status").write_text(msg + "\n")
+    return 0 if status == "DONE" else 1
+
+
+def cmd_hermes_lol(model):
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    outdir = HERE / "artifacts" / "hermes" / f"lol-{ts}"
+    outdir.mkdir(parents=True, exist_ok=True)
+    logfile = outdir / "run.log"
+
+    _seed_lol_dir(outdir)
+
+    # Delegate builder tasks to lemonade/Qwen via hermes delegation config.
+    effective_model = model if model != HERMES_MODEL else HERMES_ORCHESTRATOR
+
+    print(f"== hermes lol ==")
+    print(f"   orchestrator={effective_model}  builder={HERMES_MODEL}  out={outdir}\n")
+
+    env = {
+        **os.environ,
+        "HERMES_MODEL": effective_model,
+        "HERMES_SYSTEM_PROMPT": LOL_SYSTEM_PROMPT,
+        "HERMES_USER_PROMPT": LOL_USER_PROMPT_HERMES,
+    }
+    status = "DONE"
+    reason = "complete"
+
+    with logfile.open("w") as f:
+        try:
+            run = sh.Command(HERMES_PYTHON)(
+                "-c", _LOL_SCRIPT,
+                _cwd=str(outdir), _iter=True, _err_to_out=True, _env=env,
+            )
+            for line in run:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                f.write(line)
+                f.flush()
+        except ErrorReturnCode as e:
+            print(f"{R}hermes lol exited non-zero ({e.exit_code}){X}", file=sys.stderr)
+            status = "BAIL"
+            reason = f"rc={e.exit_code}"
+
+        msg = f"=== HARNESS:{status} reason={reason} ==="
+        print(msg, flush=True)
+        f.write(msg + "\n")
+
+    (outdir / "harness.status").write_text(msg + "\n")
+    return 0 if status == "DONE" else 1
+
 def main() -> int:
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("cmd", nargs="?", default="help",
                     choices=["observe", "loop", "watch", "milestones",
                              "opencode-milestones", "hermes-milestones", "pi-pacman", "pacman",
+                             "pi-lol", "lol",
                              "stress", "help"])
     ap.add_argument("--match", default="coder-next")
     ap.add_argument("--tail", default="0")
@@ -887,6 +1040,11 @@ def main() -> int:
         case "pacman":
             model = args.model if args.model != SESSION_MODEL else HERMES_MODEL
             return cmd_hermes_pacman(model)
+        case "pi-lol":
+            return cmd_pi_lol(args.model)
+        case "lol":
+            model = args.model if args.model != SESSION_MODEL else HERMES_MODEL
+            return cmd_hermes_lol(model)
         case "stress":
             model = args.model if args.model != SESSION_MODEL else STRESS_MODEL
             return cmd_stress(args.match, tail, args.warn_at, args.host, model,
