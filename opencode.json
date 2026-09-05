@@ -55,6 +55,22 @@
             "input": 80000,
             "output": 8192
           }
+        },
+        "qwen3.8-flash-next:builder": {
+          "name": "Qwen3.8 Flash Next (UD-Q4_K_XL)",
+          "limit": {
+            "context": 262144,
+            "input": 262144,
+            "output": 8192
+          }
+        },
+        "qwen3.8-flash-next-iq4:builder": {
+          "name": "Qwen3.8 Flash Next (UD-IQ4_XS)",
+          "limit": {
+            "context": 262144,
+            "input": 262144,
+            "output": 8192
+          }
         }
       }
     }
