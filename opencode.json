@@ -22,6 +22,18 @@
             "input": 131072,
             "output": 8192
           }
+        },
+        "local/gated": {
+          "name": "Switchyard gated (Lightning + qwen advisor)",
+          "reasoning": true,
+          "interleaved": {
+            "field": "reasoning"
+          },
+          "limit": {
+            "context": 131072,
+            "input": 131072,
+            "output": 8192
+          }
         }
       }
     },
@@ -107,7 +119,9 @@
     "webfetch": "allow",
     "external_directory": "allow",
     "bash": {
-      "*": "allow"
+      "*": "allow",
+      "rm *": "allow",
+      "git reset --hard*": "allow"
     }
   }
 }
