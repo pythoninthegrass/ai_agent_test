@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: hidden/run_trials.sh <tiel|oxcoder>-<n> ...; runs the opencode 18-milestone harness once per label, swapping the efficient-tier engine and Switchyard routes, archiving each build to build-trials/<label> with hidden-suite score and request counts.
+# Usage: hidden/run_trials.sh <tiel|oxcoder|escalate>-<n> ...; escalate runs Tiel through the local/escalate route (judge-driven escalation), the others through local/coding; runs the opencode 18-milestone harness once per label, swapping the efficient-tier engine and Switchyard routes, archiving each build to build-trials/<label> with hidden-suite score and request counts.
 set -u
 AT=/home/lance/git/ai_agent_test
 SW=/home/lance/git/linux_setup/docker/switchyard
@@ -33,11 +33,13 @@ use_model() {
 
 for label in "$@"; do
   model=${label%-*}
+  route=local/coding
+  [ "$model" = escalate ] && { model=tiel; route=local/escalate; }
   echo "=== $label: switching engine to $model ($(date -Is))"
   use_model "$model" || { echo "engine switch failed for $label"; exit 1; }
   cd "$AT" || exit 1
   start_iso=$(date -u +%FT%TZ); start_s=$(date +%s)
-  timeout 3h "$MISE" exec -- ./scripts/run.py opencode-milestones --model switchyard/local/coding --step-timeout 600 > "$OUT/$label.out" 2>&1
+  timeout 3h "$MISE" exec -- ./scripts/run.py opencode-milestones --model "switchyard/$route" --step-timeout 600 > "$OUT/$label.out" 2>&1
   end_iso=$(date -u +%FT%TZ); wall=$(( $(date +%s) - start_s ))
   rm -rf "${OUT:?}/$label" && cp -a build "$OUT/$label"
   {
